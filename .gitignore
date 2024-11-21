@@ -161,10 +161,11 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Ignorar el contenido de las carpetas input, output y templates, pero mantener las carpetas
+# Project Settings
 input/*
 !input/.gitkeep
 output/*
 !output/.gitkeep
 templates/*
 !templates/.gitkeep
+qr-generator/*
