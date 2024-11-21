@@ -1,0 +1,10 @@
+reportlab==3.6.12
+qrcode==7.4.2
+Pillow>=10.1.0,<11.0.0
+pymupdf==1.21.1
+svglib==1.1.0
+dataclasses-json>=0.5.7,<0.6.0
+python-dotenv==1.0.0
+pandas==2.1.1
+numpy==1.24.3
+openpyxl==3.1.2
