@@ -44,6 +44,7 @@ Este proyecto genera archivos PDF personalizados con códigos QR y nombres de as
    OUTPUT_FOLDER=./output
    POSITION=50,335
    QR_SIZE=200
+   ```
 
 ## Uso
 1.Coloca el archivo de Excel con los datos de los asistentes en la carpeta especificada por INPUT_FOLDER en el archivo .env.
@@ -51,8 +52,9 @@ Este proyecto genera archivos PDF personalizados con códigos QR y nombres de as
 
    ```bash
    python init.py [ruta_del_archivo_excel]
+   ```
 
-- Si proporcionas la ruta_del_archivo_excel, se usará ese archivo.
+Si proporcionas la ruta_del_archivo_excel, se usará ese archivo.
 - Si no proporcionas la ruta_del_archivo_excel, se buscará el archivo más reciente en la carpeta especificada por INPUT_FOLDER.
 
 3. El script generará los archivos PDF en la carpeta especificada por OUTPUT_FOLDER y luego comprimirá todos los archivos PDF en un archivo .zip con la fecha y hora de ejecución en el nombre.
@@ -61,6 +63,7 @@ Este proyecto genera archivos PDF personalizados con códigos QR y nombres de as
 
    ```bash
    python init.py ./input/attendees.xlsx
+   ```
 
 Este comando generará los archivos PDF a partir del archivo attendees.xlsx y los comprimirá en un archivo .zip.
 
