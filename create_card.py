@@ -4,7 +4,6 @@ import fitz  # PyMuPDF
 import qrcode
 import qrcode.image.svg
 from io import BytesIO
-import tempfile
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
@@ -13,6 +12,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 import shutil
 import os
+import tempfile
+from tempfile import NamedTemporaryFile
 from dotenv import load_dotenv
 
 # Load environment variables from the .env file
@@ -106,11 +107,19 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
     qr_doc = fitz.open(temp_pdf_path)
     qr_page = qr_doc.load_page(0)
     page.show_pdf_page(page.rect, qr_doc, 0)
+
+    use_local_temp_dir = os.getenv("USE_LOCAL_TEMP_DIR", "False").lower() in ("true", "1", "t")
     
     # Save the modified PDF file to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output_file:
-        temp_output_path = temp_output_file.name
-        doc.save(temp_output_path, deflate=True)
+    if use_local_temp_dir:
+        temp_file = NamedTemporaryFile(delete=False, suffix=".pdf", dir=os.getcwd())
+    else:
+        temp_file = NamedTemporaryFile(delete=False, suffix=".pdf")
+
+    temp_output_path = temp_file.name
+    temp_file.close()
+
+    doc.save(temp_output_path, deflate=True)
     
     # Replace the destination file with the temporary file
     shutil.move(temp_output_path, output_pdf)
