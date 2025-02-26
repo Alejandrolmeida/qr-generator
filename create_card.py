@@ -15,6 +15,7 @@ import os
 import tempfile
 from tempfile import NamedTemporaryFile
 from dotenv import load_dotenv
+from reportlab.lib import colors
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -81,20 +82,24 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
         # Draw the QR code at the specified position
         renderPDF.draw(drawing, c, position[0], position[1])
         
-        # Draw the attendee name in uppercase next to the QR code
+        # Define positions and maximum text width
         attendee_name_upper = attendee_name.upper()
-        max_text_width = 300  # Define the fixed width for the text
-        text_x = position[0] + qr_size + 10  # Adjust the x position as needed
-        text_y = position[1] + (qr_size / 4 * 3) - 20
+        max_text_width = 240  # Fixed width for the text
+        text_x = position[0] + 30
+        text_y = position[1] + qr_size + 60
         font_size = adjust_font_size(c, attendee_name_upper, max_text_width)
+        
+        # Set font and text color (black)
         c.setFont("DejaVuSans-Bold", font_size)
+        c.setFillColor(colors.black)
         c.drawString(text_x, text_y, attendee_name_upper)
 
         # Draw the attendee last name in uppercase next to the QR code
         attendee_lastame_upper = attendee_lastame.upper()
-        text_y = position[1] + (qr_size / 4) + (qr_size / 10)
+        text_y = text_y - 45
         font_size = adjust_font_size(c, attendee_lastame_upper, max_text_width)
         c.setFont("DejaVuSans-Bold", font_size)
+        c.setFillColor(colors.black)
         c.drawString(text_x, text_y, attendee_lastame_upper)
         
         c.save()
