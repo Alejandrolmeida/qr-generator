@@ -67,6 +67,23 @@ Si proporcionas la ruta_del_archivo_excel, se usará ese archivo.
 
 Este comando generará los archivos PDF a partir del archivo attendees.xlsx y los comprimirá en un archivo .zip.
 
+## Docker Instructions
+
+1. **Build the Docker image:**
+   ```
+   docker build -t qr-code-pdf-generator .
+   ```
+
+2. **Run the Docker container:**
+   ```
+   docker run -p 5000:5000 --env-file .env qr-code-pdf-generator
+   ```
+
+3. **Using Docker Compose:**
+   ```
+   docker-compose up
+   ```
+
 # Contribuciones 
 Las contribuciones son bienvenidas. Por favor, abre un issue o un pull request para discutir cualquier cambio que te gustaría realizar.
 
