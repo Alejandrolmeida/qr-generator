@@ -26,9 +26,10 @@ def process_excel_records(delete_temp_files, template_pdf, position_str, qr_size
     # Iterate over the records in the table
     for index, row in df.iterrows():
         qr_data = row['barcode']
+        attendee_code = row['asistente']
         attendee_name = row['nombre']
         attendee_lastame = row['apellidos']
-        output_pdf = f"{output_pdf_base}/{cardtype}-{qr_data}.pdf"  # Generate a unique file name for each record
+        output_pdf = f"{output_pdf_base}/{cardtype}-{attendee_code}.pdf"  # Generate a unique file name for each record
         print(f"Processing record {index + 1}/{len(df)}: {attendee_name} {attendee_lastame}")
         add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame)
 

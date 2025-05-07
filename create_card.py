@@ -79,27 +79,34 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
         temp_pdf_path = temp_pdf_file.name
         c = canvas.Canvas(temp_pdf_path, pagesize=letter)
         
-        # Draw the QR code at the specified position
-        renderPDF.draw(drawing, c, position[0], position[1])
+        # Calculate horizontal center for the QR code
+        page_width = letter[0]
+        qr_x = (page_width - qr_size) / 2
+        qr_y = position[1]
+
+        # Draw the QR code centered horizontally
+        renderPDF.draw(drawing, c, qr_x, qr_y)
         
-        # Define positions and maximum text width
-        attendee_name_upper = attendee_name.upper()
+        # Define maximum text width and calculate horizontal center for text
         max_text_width = 240  # Fixed width for the text
-        text_x = position[0] + 30
-        text_y = position[1] + qr_size + 60
-        font_size = adjust_font_size(c, attendee_name_upper, max_text_width)
         
-        # Set font and text color (black)
+        # Draw attendee name centered horizontally
+        attendee_name_upper = attendee_name.upper()
+        font_size = adjust_font_size(c, attendee_name_upper, max_text_width)
         c.setFont("DejaVuSans-Bold", font_size)
         c.setFillColor(colors.black)
+        text_width = c.stringWidth(attendee_name_upper, "DejaVuSans-Bold", font_size)
+        text_x = (page_width - text_width) / 2
+        text_y = qr_y + qr_size + 60
         c.drawString(text_x, text_y, attendee_name_upper)
 
-        # Draw the attendee last name in uppercase next to the QR code
+        # Draw attendee last name centered horizontally
         attendee_lastame_upper = attendee_lastame.upper()
-        text_y = text_y - 45
         font_size = adjust_font_size(c, attendee_lastame_upper, max_text_width)
         c.setFont("DejaVuSans-Bold", font_size)
-        c.setFillColor(colors.black)
+        text_width = c.stringWidth(attendee_lastame_upper, "DejaVuSans-Bold", font_size)
+        text_x = (page_width - text_width) / 2
+        text_y = text_y - 45
         c.drawString(text_x, text_y, attendee_lastame_upper)
         
         c.save()
