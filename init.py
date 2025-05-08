@@ -29,9 +29,10 @@ def process_excel_records(delete_temp_files, template_pdf, position_str, qr_size
         attendee_code = row['asistente']
         attendee_name = row['nombre']
         attendee_lastame = row['apellidos']
+        attendee_company = row['empresa'] if isinstance(row['empresa'], str) else ""  # Handle empty or invalid "empresa"
         output_pdf = f"{output_pdf_base}/{cardtype}-{attendee_code}.pdf"  # Generate a unique file name for each record
         print(f"Processing record {index + 1}/{len(df)}: {attendee_name} {attendee_lastame}")
-        add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame)
+        add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame, attendee_company)
 
 def compress_and_cleanup(output_pdf_base, cardtype):
     # Get the current date and time

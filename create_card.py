@@ -59,7 +59,7 @@ def adjust_font_size(c, text, max_width, initial_font_size=30, min_font_size=10)
         font_size -= 1
     return min_font_size
 
-def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame):
+def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame, attendee_company):
     # Make a copy of the template PDF
     shutil.copyfile(template_pdf, output_pdf)
 
@@ -74,7 +74,7 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
     drawing = svg2rlg(temp_svg_path)
     drawing = scale_drawing(drawing, qr_size, qr_size)
 
-    # Create a new temporary PDF to draw the QR code and attendee name
+    # Create a new temporary PDF to draw the QR code, attendee name, last name, and company
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf_file:
         temp_pdf_path = temp_pdf_file.name
         c = canvas.Canvas(temp_pdf_path, pagesize=letter)
@@ -82,7 +82,7 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
         # Calculate horizontal center for the QR code
         page_width = letter[0]
         qr_x = (page_width - qr_size) / 2
-        qr_y = position[1]
+        qr_y = position[1] - 25
 
         # Draw the QR code centered horizontally
         renderPDF.draw(drawing, c, qr_x, qr_y)
@@ -97,7 +97,7 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
         c.setFillColor(colors.black)
         text_width = c.stringWidth(attendee_name_upper, "DejaVuSans-Bold", font_size)
         text_x = (page_width - text_width) / 2
-        text_y = qr_y + qr_size + 60
+        text_y = qr_y + qr_size + 115
         c.drawString(text_x, text_y, attendee_name_upper)
 
         # Draw attendee last name centered horizontally
@@ -108,6 +108,17 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
         text_x = (page_width - text_width) / 2
         text_y = text_y - 45
         c.drawString(text_x, text_y, attendee_lastame_upper)
+
+        # Draw attendee company centered horizontally in color #005BAB if not empty
+        if attendee_company:
+            attendee_company_upper = attendee_company.upper()
+            font_size = adjust_font_size(c, attendee_company_upper, max_text_width)
+            c.setFont("DejaVuSans-Bold", font_size)
+            c.setFillColor(colors.HexColor("#005BAB"))  # Set text color to #005BAB
+            text_width = c.stringWidth(attendee_company_upper, "DejaVuSans-Bold", font_size)
+            text_x = (page_width - text_width) / 2
+            text_y = text_y - 55
+            c.drawString(text_x, text_y, attendee_company_upper)
         
         c.save()
 
