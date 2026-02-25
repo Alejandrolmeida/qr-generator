@@ -16,6 +16,9 @@ param tags object
 @description('Nombre exacto del KV. Si se indica sobreescribe el calculado (útil para reconciliar recursos ya existentes)')
 param kvNameOverride string = ''
 
+@description('Ubicación del KV. Si se omite usa la ubicación principal del módulo. Útil para reconciliar un KV ya existente en otra región.')
+param kvLocationOverride string = ''
+
 @description('Principal IDs que necesitan "Key Vault Secrets User" (solo lectura)')
 param secretsUserPrincipalIds array = []
 
@@ -23,12 +26,13 @@ param secretsUserPrincipalIds array = []
 param secretsOfficerPrincipalIds array = []
 
 // KV name: max 24 chars, solo alfanumerico y guiones, debe empezar por letra
-var kvName = empty(kvNameOverride) ? take('kv-${prefix}', 24) : kvNameOverride
+var kvName     = empty(kvNameOverride)     ? take('kv-${prefix}', 24) : kvNameOverride
+var kvLocation = empty(kvLocationOverride) ? location                 : kvLocationOverride
 
 // ── Key Vault ─────────────────────────────────────────────────────────────────
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: kvName
-  location: location
+  location: kvLocation
   tags: tags
   properties: {
     sku: {

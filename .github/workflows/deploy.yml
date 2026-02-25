@@ -2,29 +2,31 @@ name: Deploy — Lanyards AI Generator
 
 # ─── Flujo de secretos ────────────────────────────────────────────────────────
 #
-#  GitHub Secrets (cifrados, solo para CI/CD):
+#  GitHub Secrets necesarios (solo OIDC — ningún secreto de negocio):
 #    AZURE_CLIENT_ID         → App Registration OIDC (identidad del pipeline)
 #    AZURE_TENANT_ID         → Tenant de la suscripción
 #    AZURE_SUBSCRIPTION_ID   → ID de la suscripción
-#    AZURE_OPENAI_API_KEY    → Se sincroniza a AKV en cada deploy
-#    CHAINLIT_AUTH_SECRET    → Se sincroniza a AKV en cada deploy
 #
-#  GitHub Variables (no sensibles, Settings → Variables):
+#  GitHub Variables (Settings → Variables):
 #    AZURE_RG   → Resource Group, p.ej. rg-lanyards-aigen
 #    ACR_NAME   → Nombre corto del ACR, p.ej. acrazurebrainschat
 #
-#  Azure Key Vault (authoritative runtime store):
-#    lanyards-openai-api-key        ← sincronizado desde GitHub Secret
-#    lanyards-chainlit-auth-secret  ← sincronizado desde GitHub Secret
+#  Azure Key Vault (authoritative runtime store — poblado por setup-keyvault.sh):
+#    lanyards-openai-endpoint          ← endpoint Azure OpenAI
+#    lanyards-openai-api-key           ← API key Azure OpenAI
+#    lanyards-openai-deployment        ← nombre del deployment
+#    lanyards-openai-api-version       ← versión API
+#    lanyards-chainlit-auth-secret     ← secreto Chainlit
 #
 #  Las Container Apps leen AKV directamente vía UAMI en runtime.
-#  El pipeline NUNCA pasa secretos como parámetros Bicep.
+#  El pipeline NUNCA gestiona secretos de negocio: solo OIDC.
 #
 # ─── Prerequisito (una sola vez) ─────────────────────────────────────────────
-#  Ejecutar scripts/setup-github-secrets.sh para:
-#    1. Crear el App Registration con credenciales OIDC federadas
-#    2. Asignar los roles necesarios (Contributor, AcrPush, AcrPull sobre UAMI)
-#    3. Subir AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID a GitHub
+#  1. Ejecutar scripts/setup-keyvault.sh para poblar los secretos en AKV.
+#  2. Ejecutar scripts/setup-github-secrets.sh para:
+#     a. Crear el App Registration con credenciales OIDC federadas
+#     b. Asignar los roles necesarios (Contributor, AcrPush, AcrPull sobre UAMI)
+#     c. Subir AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RG, ACR_NAME a GitHub
 
 on:
   workflow_run:
@@ -89,10 +91,9 @@ jobs:
       #   Apps (que los referencian vía keyVaultUrl).
       - name: Provisionar AKV y sincronizar secretos
         run: |
-          ENV="${{ github.event.inputs.environment || 'prod' }}"
-          KV_NAME="kv-${{ env.PROJECT_NAME }}-${ENV}"
-
-          # Truncar a 24 chars (límite de AKV)
+          # Nombre del KV = igual que calcula Bicep (kvNameOverride): kv-<projectName>
+          # sin sufijo de entorno, para reconciliar el recurso ya existente.
+          KV_NAME="kv-${{ env.PROJECT_NAME }}"
           KV_NAME="${KV_NAME:0:24}"
           echo "kv_name=$KV_NAME" >> $GITHUB_ENV
 
@@ -112,14 +113,10 @@ jobs:
             echo "✅ Key Vault ya existe: $KV_NAME"
           fi
 
-          # Asignar Key Vault Secrets Officer al SP del pipeline (para poder escribir)
-          SP_OID=$(az ad sp show \
-            --id "$(az account show --query 'user.name' -o tsv)" \
-            --query id -o tsv 2>/dev/null || \
-            az account show --query 'user.assignedIdentityInfo' -o tsv 2>/dev/null || \
-            az rest --method GET \
-              --url "https://graph.microsoft.com/v1.0/servicePrincipals?\$filter=appId eq '${{ secrets.AZURE_CLIENT_ID }}'" \
-              --query "value[0].id" -o tsv)
+          # Asignar Key Vault Secrets Officer al SP del pipeline (para poder leer/escribir secretos)
+          SP_OID=$(az rest --method GET \
+            --url "https://graph.microsoft.com/v1.0/servicePrincipals?\$filter=appId eq '${{ secrets.AZURE_CLIENT_ID }}'" \
+            --query "value[0].id" -o tsv)
 
           KV_ID=$(az keyvault show --name "$KV_NAME" --query id -o tsv)
           az role assignment create \
@@ -129,15 +126,7 @@ jobs:
             --scope "$KV_ID" \
             --output none 2>/dev/null || echo "ℹ️ Rol ya asignado"
 
-          # Sincronizar SOLO el secreto de Chainlit a AKV (OAI es keyless)
-          echo "📝 Sincronizando secreto Chainlit a AKV..."
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "lanyards-chainlit-auth-secret" \
-            --value "${{ secrets.CHAINLIT_AUTH_SECRET }}" \
-            --output none
-
-          echo "✅ Secreto sincronizado en AKV: $KV_NAME"
+          echo "✅ AKV listo: $KV_NAME"
 
       # ── 4. Instalar Bicep CLI ─────────────────────────────────────────────
       - name: Instalar Bicep

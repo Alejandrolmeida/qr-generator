@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "12153774626321888471"
+      "templateHash": "12177329755633061533"
     }
   },
   "parameters": {
@@ -54,6 +54,13 @@
       "defaultValue": "acrazurebrainschat.azurecr.io",
       "metadata": {
         "description": "Login server del ACR, p.ej. acrazurebrainschat.azurecr.io"
+      }
+    },
+    "keyVaultLocation": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Ubicación del Key Vault. Si difiere de location (KV ya existente en otra región), se usa este valor."
       }
     },
     "openAiDeployment": {
@@ -350,6 +357,9 @@
           "kvNameOverride": {
             "value": "[take(format('kv-{0}', parameters('projectName')), 24)]"
           },
+          "kvLocationOverride": {
+            "value": "[parameters('keyVaultLocation')]"
+          },
           "secretsUserPrincipalIds": {
             "value": [
               "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-{0}', variables('prefix'))), '2023-01-31').principalId]"
@@ -363,7 +373,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "4185826017947803834"
+              "templateHash": "11854938127986692821"
             }
           },
           "parameters": {
@@ -383,6 +393,13 @@
                 "description": "Nombre exacto del KV. Si se indica sobreescribe el calculado (útil para reconciliar recursos ya existentes)"
               }
             },
+            "kvLocationOverride": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Ubicación del KV. Si se omite usa la ubicación principal del módulo. Útil para reconciliar un KV ya existente en otra región."
+              }
+            },
             "secretsUserPrincipalIds": {
               "type": "array",
               "defaultValue": [],
@@ -400,6 +417,7 @@
           },
           "variables": {
             "kvName": "[if(empty(parameters('kvNameOverride')), take(format('kv-{0}', parameters('prefix')), 24), parameters('kvNameOverride'))]",
+            "kvLocation": "[if(empty(parameters('kvLocationOverride')), parameters('location'), parameters('kvLocationOverride'))]",
             "kvSecretsUserRoleId": "4633458b-17de-408a-b874-0445c86b69e6",
             "kvSecretsOfficerRoleId": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"
           },
@@ -408,7 +426,7 @@
               "type": "Microsoft.KeyVault/vaults",
               "apiVersion": "2023-07-01",
               "name": "[variables('kvName')]",
-              "location": "[parameters('location')]",
+              "location": "[variables('kvLocation')]",
               "tags": "[parameters('tags')]",
               "properties": {
                 "sku": {

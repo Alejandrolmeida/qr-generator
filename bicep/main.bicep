@@ -38,6 +38,9 @@ param frontendImage string
 @description('Login server del ACR, p.ej. acrazurebrainschat.azurecr.io')
 param acrLoginServer string = 'acrazurebrainschat.azurecr.io'
 
+@description('Ubicación del Key Vault. Si difiere de location (KV ya existente en otra región), se usa este valor.')
+param keyVaultLocation string = ''
+
 @description('Nombre del deployment GPT-4o')
 param openAiDeployment string = 'gpt-4o'
 
@@ -108,7 +111,10 @@ module keyVault 'modules/key-vault.bicep' = {
     // Forzar nombre sin sufijo de entorno para que coincida con el recurso ya existente
     // en la suscripción: kv-lanyards-aigen (max 24 chars).
     // En entornos distintos con RGs separados se puede omitir este override.
-    kvNameOverride: take('kv-${projectName}', 24)
+    kvNameOverride:     take('kv-${projectName}', 24)
+    // Si el KV ya existe en otra región (p. ej. dev tiene KV en spaincentral pero
+    // el resto de recursos en westeurope), se pasa la región real del KV aquí.
+    kvLocationOverride: keyVaultLocation
     // La UAMI lee secretos; el SP de deploy escribe (asignado via setup-github-secrets.sh)
     secretsUserPrincipalIds: [uami.properties.principalId]
   }

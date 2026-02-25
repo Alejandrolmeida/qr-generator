@@ -178,18 +178,6 @@ set_gh_secret "AZURE_CLIENT_ID"       "$CLIENT_ID"
 set_gh_secret "AZURE_TENANT_ID"       "$TENANT_ID"
 set_gh_secret "AZURE_SUBSCRIPTION_ID" "$SUBSCRIPTION_ID"
 
-# Secreto de negocio — Chainlit auth (el único necesario; OpenAI es keyless)
-echo ""
-echo "  Introduce el secreto de negocio Chainlit:"
-echo "  (deja en blanco para autogenerar CHAINLIT_AUTH_SECRET)"
-echo ""
-read -rsp "  CHAINLIT_AUTH_SECRET: " CL_SEC; echo ""
-if [ -z "$CL_SEC" ]; then
-  CL_SEC=$(openssl rand -hex 32)
-  echo "  🎲 Autogenerado: ${CL_SEC:0:8}…"
-fi
-set_gh_secret "CHAINLIT_AUTH_SECRET" "$CL_SEC"
-
 # ── 6. Subir GitHub Variables (no sensibles) ──────────────────────────────────
 echo ""
 echo "─── [6/6] GitHub Variables ──────────────────────────────────────"
@@ -205,18 +193,6 @@ set_gh_var() {
 
 set_gh_var "AZURE_RG"  "$AZURE_RG"
 set_gh_var "ACR_NAME"  "$ACR_NAME"
-
-# OPENAI_RESOURCE_ID: resource ID completo del recurso Azure OpenAI
-# (no es sensible; el deploy.yml lo usa para asignar el rol a la UAMI)
-echo ""
-echo "  OPENAI_RESOURCE_ID: resource ID completo del Azure OpenAI"
-echo "  Ejemplo: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<name>"
-read -rp "  OPENAI_RESOURCE_ID: " OAI_RESOURCE_ID; echo ""
-if [ -n "$OAI_RESOURCE_ID" ]; then
-  set_gh_var "OPENAI_RESOURCE_ID" "$OAI_RESOURCE_ID"
-else
-  echo "  ⚠️  Omitido. Añade OPENAI_RESOURCE_ID en Settings → Variables de GitHub manualmente."
-fi
 
 # ── Resumen ───────────────────────────────────────────────────────────────────
 echo ""

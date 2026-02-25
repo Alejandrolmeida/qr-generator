@@ -1,8 +1,12 @@
 using '../main.bicep'
 
 param environment   = 'dev'
-param location      = 'spaincentral'
+param location      = 'westeurope'
 param projectName   = 'lanyards-aigen'
+// El KV ya existe en spaincentral (creado antes del primer deploy bien configurado).
+// El resto de recursos están en westeurope. keyVaultLocation evita errores de
+// "location change not allowed" en ARM.
+param keyVaultLocation = 'spaincentral'
 
 param tags = {
   Environment: 'Development'
