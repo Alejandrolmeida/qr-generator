@@ -7,7 +7,8 @@ param location string
 param tags object
 
 // Nombre debe ser único globalmente, sin guiones, max 24 chars
-var storageAccountName = 'st${replace(prefix, '-', '')}${take(uniqueString(resourceGroup().id), 6)}'
+// take() sobre el string completo garantiza el límite independientemente del entorno (dev/prod/staging)
+var storageAccountName = take('st${replace(prefix, '-', '')}${uniqueString(resourceGroup().id)}', 24)
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
