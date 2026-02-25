@@ -172,6 +172,16 @@ jobs:
 
           echo "✅ UAMI: $UAMI_NAME | AcrPull: OK"
 
+      # ── 4c. Esperar propagación de roles en AAD ───────────────────────────
+      #   Los role assignments de Azure AD pueden tardar hasta 2-3 min en
+      #   propagarse. Sin esta espera, el Container App falla al hacer pull
+      #   aunque AcrPull esté asignado.
+      - name: Esperar propagación IAM (90s)
+        run: |
+          echo "⏳ Esperando 90s para propagación de roles Azure IAM..."
+          sleep 90
+          echo "✅ Propagación completada"
+
       # ── 5. What-if (solo informativo) ────────────────────────────────────
       - name: Validar Bicep (what-if)
         continue-on-error: true   # informativo — no bloquea el deploy
