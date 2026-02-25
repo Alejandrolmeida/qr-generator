@@ -125,7 +125,7 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0    // escala a 0 cuando no hay uso (cost savings)
+        minReplicas: 1    // mínimo 1 réplica siempre activa (requerido por FastAPI + health probes)
         maxReplicas: 3
         rules: [
           {
@@ -217,7 +217,7 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1    // Chainlit usa WebSockets persistentes — scale-to-zero rompe la conexión
         maxReplicas: 2
         rules: [
           {
