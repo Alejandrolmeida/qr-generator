@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "12177329755633061533"
+      "templateHash": "16168892586872802492"
     }
   },
   "parameters": {
@@ -373,7 +373,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "11854938127986692821"
+              "templateHash": "5073709997732792494"
             }
           },
           "parameters": {
@@ -436,7 +436,6 @@
                 "tenantId": "[tenant().tenantId]",
                 "enableRbacAuthorization": true,
                 "enableSoftDelete": true,
-                "softDeleteRetentionInDays": 7,
                 "enabledForDeployment": false,
                 "enabledForTemplateDeployment": false,
                 "publicNetworkAccess": "Enabled",

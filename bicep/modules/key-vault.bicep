@@ -42,7 +42,7 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
     tenantId:                  tenant().tenantId
     enableRbacAuthorization:   true   // sin access policies, todo via RBAC
     enableSoftDelete:          true
-    softDeleteRetentionInDays: 7
+    // softDeleteRetentionInDays: no se modifica en KVs existentes (valor inalterable post-creación)
     enabledForDeployment:      false
     enabledForTemplateDeployment: false  // no se necesita para Container Apps
     publicNetworkAccess: 'Enabled'       // Container Apps acceden desde internet interno Azure
