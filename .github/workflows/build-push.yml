@@ -1,0 +1,264 @@
+name: Build & Push — QR Accreditation
+
+# ─── Estrategia de imágenes Docker (4 capas) ─────────────────────────────────
+#
+#  qrgen/backend-base:latest
+#    └─ Python 3.12 + PyMuPDF + ReportLab + pandas + azure-sdk…
+#       Se reconstruye SOLO si backend/requirements.txt o backend/Dockerfile.base
+#       cambian. Build time: ~4-5 minutos (dependencias pesadas).
+#
+#  qrgen/backend-app:latest
+#    └─ FROM backend-base + código (backend/app/)
+#       Se reconstruye en cada commit. Build time: ~15 segundos.
+#
+#  qrgen/frontend-base:latest
+#    └─ FROM acrazurebrainschat.azurecr.io/chatapp/base + pip install httpx
+#       La imagen base del chatapp (chainlit, openai…) YA EXISTE en ACR.
+#       Se reconstruye SOLO si frontend/Dockerfile.base cambia.
+#       Build time: ~20 segundos (un solo pip install encima de la base cacheada).
+#
+#  qrgen/frontend-app:latest
+#    └─ FROM frontend-base + código (frontend/app.py, agent/, client/)
+#       Se reconstruye en cada commit. Build time: ~10 segundos.
+#
+# ─── Secretos necesarios en GitHub ───────────────────────────────────────────
+#   ACR_USERNAME, ACR_PASSWORD    → credenciales de acrazurebrainschat.azurecr.io
+#
+# ─── Variables del workflow ───────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main, feature/ai-accreditation-agent]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/build-push.yml'
+  workflow_dispatch:
+    inputs:
+      force_rebuild_bases:
+        description: 'Forzar rebuild de ambas imágenes base'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: read
+
+env:
+  ACR: acrazurebrainschat.azurecr.io
+
+  CHATAPP_BASE:    acrazurebrainschat.azurecr.io/chatapp/base:latest        # existente, no se toca
+  BACKEND_BASE:    acrazurebrainschat.azurecr.io/qrgen/backend-base:latest
+  BACKEND_APP:     acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
+  FRONTEND_BASE:   acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
+  FRONTEND_APP:    acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
+
+# ─── Job 1: Detectar qué hay que reconstruir ─────────────────────────────────
+jobs:
+  check:
+    name: Detectar cambios
+    runs-on: ubuntu-latest
+    outputs:
+      backend_base:  ${{ steps.detect.outputs.backend_base }}
+      frontend_base: ${{ steps.detect.outputs.frontend_base }}
+      backend_code:  ${{ steps.detect.outputs.backend_code }}
+      frontend_code: ${{ steps.detect.outputs.frontend_code }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detectar cambios por ruta
+        id: detect
+        run: |
+          FORCE="${{ github.event.inputs.force_rebuild_bases }}"
+
+          # Primer commit o force
+          if [[ "$FORCE" == "true" ]] || ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "backend_base=true"   >> $GITHUB_OUTPUT
+            echo "frontend_base=true"  >> $GITHUB_OUTPUT
+            echo "backend_code=true"   >> $GITHUB_OUTPUT
+            echo "frontend_code=true"  >> $GITHUB_OUTPUT
+            echo "🔨 Rebuild total forzado"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+
+          # Backend base: requirements.txt o Dockerfile.base
+          if echo "$CHANGED" | grep -qE "^backend/(requirements\.txt|Dockerfile\.base)$"; then
+            echo "backend_base=true" >> $GITHUB_OUTPUT
+            echo "🔨 Backend base → rebuild (deps cambiadas)"
+          else
+            echo "backend_base=false" >> $GITHUB_OUTPUT
+            echo "⏭️  Backend base → reutilizar de ACR"
+          fi
+
+          # Frontend base: solo Dockerfile.base (requirements contiene solo httpx,
+          # si cambia httpx también triggerea el base)
+          if echo "$CHANGED" | grep -qE "^frontend/(Dockerfile\.base|requirements\.txt)$"; then
+            echo "frontend_base=true" >> $GITHUB_OUTPUT
+            echo "🔨 Frontend base → rebuild (httpx o Dockerfile.base cambiados)"
+          else
+            echo "frontend_base=false" >> $GITHUB_OUTPUT
+            echo "⏭️  Frontend base → reutilizar de ACR (chatapp/base ya cacheada)"
+          fi
+
+          # App code: cualquier cambio en backend/app o backend/Dockerfile
+          if echo "$CHANGED" | grep -qE "^backend/(app/|Dockerfile$|fonts/)"; then
+            echo "backend_code=true" >> $GITHUB_OUTPUT
+          else
+            echo "backend_code=false" >> $GITHUB_OUTPUT
+          fi
+
+          # App code: cualquier cambio en frontend
+          if echo "$CHANGED" | grep -qE "^frontend/(app\.py|agent/|client/|\.chainlit/|Dockerfile$)"; then
+            echo "frontend_code=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend_code=false" >> $GITHUB_OUTPUT
+          fi
+
+# ─── Job 2: Build imagen base del backend ────────────────────────────────────
+  build-backend-base:
+    name: Build backend-base
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.backend_base == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build y push backend-base
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./backend
+          file:       ./backend/Dockerfile.base
+          push:       true
+          tags:       ${{ env.BACKEND_BASE }}
+          cache-from: type=registry,ref=${{ env.BACKEND_BASE }}
+          cache-to:   type=inline
+
+# ─── Job 3: Build imagen base del frontend ───────────────────────────────────
+  build-frontend-base:
+    name: Build frontend-base
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.frontend_base == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build y push frontend-base
+        # FROM chatapp/base (ya en ACR) + pip install httpx → ~20 segundos
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./frontend
+          file:       ./frontend/Dockerfile.base
+          push:       true
+          tags:       ${{ env.FRONTEND_BASE }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_BASE }}
+          cache-to:   type=inline
+
+# ─── Job 4: Build imagen app del backend ─────────────────────────────────────
+  build-backend-app:
+    name: Build backend-app
+    runs-on: ubuntu-latest
+    needs: [check, build-backend-base]
+    if: |
+      always() &&
+      needs.check.result == 'success' &&
+      (needs.check.outputs.backend_code == 'true' || needs.check.outputs.backend_base == 'true') &&
+      (needs.build-backend-base.result == 'success' || needs.build-backend-base.result == 'skipped')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build y push backend-app
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./backend
+          file:       ./backend/Dockerfile
+          push:       true
+          tags:       ${{ env.BACKEND_APP }}
+          build-args: BASE_IMAGE=${{ env.BACKEND_BASE }}
+          cache-from: type=registry,ref=${{ env.BACKEND_APP }}
+          cache-to:   type=inline
+
+# ─── Job 5: Build imagen app del frontend ────────────────────────────────────
+  build-frontend-app:
+    name: Build frontend-app
+    runs-on: ubuntu-latest
+    needs: [check, build-frontend-base]
+    if: |
+      always() &&
+      needs.check.result == 'success' &&
+      (needs.check.outputs.frontend_code == 'true' || needs.check.outputs.frontend_base == 'true') &&
+      (needs.build-frontend-base.result == 'success' || needs.build-frontend-base.result == 'skipped')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build y push frontend-app
+        uses: docker/build-push-action@v5
+        with:
+          context:    ./frontend
+          file:       ./frontend/Dockerfile
+          push:       true
+          tags:       ${{ env.FRONTEND_APP }}
+          build-args: BASE_IMAGE=${{ env.FRONTEND_BASE }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_APP }}
+          cache-to:   type=inline
+
+# ─── Job 6: Resumen ──────────────────────────────────────────────────────────
+  summary:
+    name: Resumen
+    runs-on: ubuntu-latest
+    needs: [check, build-backend-base, build-frontend-base, build-backend-app, build-frontend-app]
+    if: always()
+
+    steps:
+      - name: Escribir resumen
+        run: |
+          echo "## 🐳 Build QR Accreditation" >> $GITHUB_STEP_SUMMARY
+          echo "| Imagen | Estado |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| backend-base  | ${{ needs.build-backend-base.result  == 'skipped' && '⏭️ reutilizada' || needs.build-backend-base.result  }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| frontend-base | ${{ needs.build-frontend-base.result == 'skipped' && '⏭️ reutilizada' || needs.build-frontend-base.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| backend-app   | ${{ needs.build-backend-app.result   == 'skipped' && '⏭️ sin cambios' || needs.build-backend-app.result   }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| frontend-app  | ${{ needs.build-frontend-app.result  == 'skipped' && '⏭️ sin cambios' || needs.build-frontend-app.result  }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Autor  | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

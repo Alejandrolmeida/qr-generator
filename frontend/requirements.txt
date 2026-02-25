@@ -1,17 +1,10 @@
-# QR Accreditation Frontend (Chainlit) — dependencias
+# QR Accreditation Frontend (Chainlit) — dependencias adicionales
 # Python 3.12
+#
+# NOTA: la imagen base (acrazurebrainschat.azurecr.io/qrgen/frontend-base)
+# hereda de acrazurebrainschat.azurecr.io/chatapp/base que ya incluye:
+#   chainlit, openai, azure-identity, azure-cosmos, requests, python-dotenv…
+# Este fichero solo declara lo que se añade ENCIMA de esa base.
 
-# ── UI de chat ────────────────────────────────────────────────────────────────
-chainlit>=1.3.0
-
-# ── Azure OpenAI (conversación del agente) ────────────────────────────────────
-openai>=1.40.0
-
-# ── Azure Identity (Managed Identity) ────────────────────────────────────────
-azure-identity>=1.17.0
-
-# ── HTTP client hacia el backend API ─────────────────────────────────────────
+# ── HTTP client async hacia el backend API (no está en chatapp/base) ─────────
 httpx>=0.27.0
-
-# ── Variables de entorno en local ─────────────────────────────────────────────
-python-dotenv>=1.1.0

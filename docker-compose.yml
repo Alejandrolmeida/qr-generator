@@ -1,0 +1,101 @@
+# =============================================================================
+# QR Accreditation — Docker Compose (desarrollo local)
+# =============================================================================
+# Levanta backend + frontend con hot-reload y un emulador local de Azurite
+# en lugar de Azure Blob Storage real.
+#
+# Uso:
+#   cp .env.example .env   # ajusta tus claves
+#   docker compose up --build
+#
+# URLs:
+#   Frontend (Chainlit) → http://localhost:8000
+#   Backend  (FastAPI)  → http://localhost:8080
+#   API docs (Swagger)  → http://localhost:8080/docs
+#   Azurite (Blob)      → http://localhost:10000
+# =============================================================================
+
+services:
+
+  # ── Azure Blob Storage local (Azurite) ─────────────────────────────────────
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: qrgen-azurite
+    ports:
+      - "10000:10000"   # Blob
+      - "10001:10001"   # Queue
+    volumes:
+      - azurite-data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --loose
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend FastAPI ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: acrazurebrainschat.azurecr.io/qrgen/backend-base:latest
+    container_name: qrgen-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # Usar Azurite en local
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OGLjX+AuKOyrAs0i2X9k4BIaO7WaYaibxEoGaHX3KQ==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      DEBUG: "true"
+      CORS_ORIGINS: '["http://localhost:8000"]'
+      # Azure OpenAI
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_DEPLOYMENT_GPT4O: ${AZURE_OPENAI_DEPLOYMENT_GPT4O:-gpt-4o}
+      # Carpetas internas
+      FONTS_FOLDER: /app/fonts
+      OUTPUT_FOLDER: /tmp/qr-output
+    volumes:
+      # Hot-reload en desarrollo: montar código directamente
+      - ./backend/app:/app/app
+      - ./fonts:/app/fonts:ro
+    depends_on:
+      azurite:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Frontend Chainlit ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Usa la imagen base del chatapp (ya en ACR) como punto de partida
+        BASE_IMAGE: acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
+    container_name: qrgen-frontend
+    ports:
+      - "8000:8000"
+    environment:
+      BACKEND_URL: "http://backend:8080"
+      # Azure OpenAI
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT_GPT4O:-gpt-4o}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
+      # Chainlit
+      CHAINLIT_AUTH_SECRET: ${CHAINLIT_AUTH_SECRET:-dev-secret-change-in-prod}
+    volumes:
+      # Hot-reload en desarrollo
+      - ./frontend/app.py:/app/app.py
+      - ./frontend/agent:/app/agent
+      - ./frontend/client:/app/client
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  azurite-data:

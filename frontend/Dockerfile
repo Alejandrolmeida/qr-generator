@@ -1,15 +1,17 @@
 # ─── Imagen app frontend: código sobre la imagen base ────────────────────────
 #
-# La imagen base ya tiene Python 3.12 + chainlit + openai + httpx instalados.
+# La imagen base (qrgen/frontend-base) ya tiene chainlit, openai, httpx, etc.
 # Este Dockerfile solo añade el código fuente (~30KB).
 #
 # Se reconstruye en cada commit a main → deploy en ~10 segundos.
 #
 # Build local:
-#   docker build -t <acr>.azurecr.io/qrgen/frontend-app:latest frontend/
-#   docker push <acr>.azurecr.io/qrgen/frontend-app:latest
+#   docker build \
+#     --build-arg BASE_IMAGE=acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest \
+#     -t acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest \
+#     frontend/
 
-ARG BASE_IMAGE=qrgen/frontend-base:latest
+ARG BASE_IMAGE=acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
