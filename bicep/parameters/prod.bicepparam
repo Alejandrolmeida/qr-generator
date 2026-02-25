@@ -3,6 +3,10 @@ using '../main.bicep'
 param environment   = 'prod'
 param location      = 'westeurope'
 param projectName   = 'lanyards-aigen'
+// El KV ya existe en spaincentral (creado antes del primer deploy bien configurado).
+// El resto de recursos están en westeurope. keyVaultLocation evita errores de
+// "location change not allowed" en ARM.
+param keyVaultLocation = 'spaincentral'
 
 param tags = {
   Environment: 'Production'
@@ -26,3 +30,7 @@ param openAiDeployment = 'gpt-4o'
 // Todos los secretos (openAiApiKey, chainlitAuthSecret) residen en AKV.
 // Las Container Apps los leen en runtime vía Managed Identity (UAMI).
 // GitHub solo almacena AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID.
+
+// OAuth Entra ID — solo el email del propietario puede acceder
+param chainlitUrl   = 'https://lanyard.azurebrains.com'
+param allowedEmails = 'alejandro.almeida.garcia@gmail.com'
