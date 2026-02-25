@@ -1,11 +1,16 @@
-reportlab==3.6.12
-qrcode==7.4.2
-Pillow>=9.0.0,<10.0.0
-pymupdf==1.21.1
-svglib==1.1.0
-dataclasses-json>=0.5.7,<0.6.0
-python-dotenv
-pandas>=1.3.0,<2.0.0
-numpy>=1.21.0,<1.22.0
-openpyxl==3.1.2
-pytz
+# Tested with Python 3.12 (conda env: azcli)
+# Standard install:
+#   pip install -r requirements.txt
+#
+# NOTE: svglib requires system cairo libraries.
+# If pycairo fails to compile, install svglib via conda instead:
+#   conda install -c conda-forge svglib
+
+reportlab>=4.4.4
+PyMuPDF>=1.26.5
+pandas>=2.3.0
+openpyxl>=3.1.5
+python-dotenv>=1.1.1
+Pillow>=12.0.0
+qrcode[pil]>=8.2
+svglib>=1.5.1

@@ -10,12 +10,12 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
+from reportlab.lib import colors
 import shutil
 import os
 import tempfile
 from tempfile import NamedTemporaryFile
 from dotenv import load_dotenv
-from reportlab.lib import colors
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -59,9 +59,15 @@ def adjust_font_size(c, text, max_width, initial_font_size=30, min_font_size=10)
         font_size -= 1
     return min_font_size
 
-def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame, attendee_company):
+def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files, attendee_name, attendee_lastame, attendee_company=""):
     # Make a copy of the template PDF
     shutil.copyfile(template_pdf, output_pdf)
+
+    # Read template dimensions so the overlay is created at the exact same size.
+    # This avoids any scaling when the overlay is merged, keeping positions pixel-perfect.
+    with fitz.open(template_pdf) as _tmpl:
+        tmpl_w = _tmpl[0].rect.width
+        tmpl_h = _tmpl[0].rect.height
 
     # Generate the QR code in SVG
     qr_svg = generate_qr_code_svg(qr_data)
@@ -74,53 +80,50 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
     drawing = svg2rlg(temp_svg_path)
     drawing = scale_drawing(drawing, qr_size, qr_size)
 
-    # Create a new temporary PDF to draw the QR code, attendee name, last name, and company
+    # Create overlay PDF at the SAME dimensions as the template.
+    # ReportLab uses y=0 at bottom; position=(x, y_bottom) in these coordinates.
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf_file:
         temp_pdf_path = temp_pdf_file.name
-        c = canvas.Canvas(temp_pdf_path, pagesize=letter)
-        
-        # Calculate horizontal center for the QR code
-        page_width = letter[0]
-        qr_x = (page_width - qr_size) / 2
-        qr_y = position[1] - 25
 
-        # Draw the QR code centered horizontally
-        renderPDF.draw(drawing, c, qr_x, qr_y)
-        
-        # Define maximum text width and calculate horizontal center for text
-        max_text_width = 240  # Fixed width for the text
-        
-        # Draw attendee name centered horizontally
-        attendee_name_upper = attendee_name.upper()
-        font_size = adjust_font_size(c, attendee_name_upper, max_text_width)
-        c.setFont("DejaVuSans-Bold", font_size)
-        c.setFillColor(colors.black)
-        text_width = c.stringWidth(attendee_name_upper, "DejaVuSans-Bold", font_size)
-        text_x = (page_width - text_width) / 2
-        text_y = qr_y + qr_size + 115
-        c.drawString(text_x, text_y, attendee_name_upper)
+    c = canvas.Canvas(temp_pdf_path, pagesize=(tmpl_w, tmpl_h))
 
-        # Draw attendee last name centered horizontally
-        attendee_lastame_upper = attendee_lastame.upper()
-        font_size = adjust_font_size(c, attendee_lastame_upper, max_text_width)
-        c.setFont("DejaVuSans-Bold", font_size)
-        text_width = c.stringWidth(attendee_lastame_upper, "DejaVuSans-Bold", font_size)
-        text_x = (page_width - text_width) / 2
-        text_y = text_y - 45
-        c.drawString(text_x, text_y, attendee_lastame_upper)
+    # ── QR code ────────────────────────────────────────────────────────────────
+    # position = (qr_x, qr_y_bottom): bottom-left of QR in ReportLab coords.
+    # Designed so the QR is horizontally centered inside the white box.
+    renderPDF.draw(drawing, c, position[0], position[1])
 
-        # Draw attendee company centered horizontally in color #005BAB if not empty
-        if attendee_company:
-            attendee_company_upper = attendee_company.upper()
-            font_size = adjust_font_size(c, attendee_company_upper, max_text_width)
-            c.setFont("DejaVuSans-Bold", font_size)
-            c.setFillColor(colors.HexColor("#005BAB"))  # Set text color to #005BAB
-            text_width = c.stringWidth(attendee_company_upper, "DejaVuSans-Bold", font_size)
-            text_x = (page_width - text_width) / 2
-            text_y = text_y - 55
-            c.drawString(text_x, text_y, attendee_company_upper)
-        
-        c.save()
+    # ── Attendee name: centered above the QR code ───────────────────────────
+    # Text is centered on the page (white box center == page center horizontally).
+    page_cx = tmpl_w / 2
+    # Max text width = white box width minus 10 pt margin on each side
+    max_text_width = tmpl_w - (position[0] * 2) - 4
+    qr_top = position[1] + qr_size  # top edge of QR in RL coords (y from bottom)
+
+    # Last name — first line above QR
+    last_upper = attendee_lastame.upper()
+    font_last = adjust_font_size(c, last_upper, max_text_width, initial_font_size=22)
+    c.setFont("DejaVuSans-Bold", font_last)
+    y_last = qr_top + 10
+    c.drawCentredString(page_cx, y_last, last_upper)
+
+    # First name — second line above last name
+    first_upper = attendee_name.upper()
+    font_first = adjust_font_size(c, first_upper, max_text_width, initial_font_size=22)
+    c.setFont("DejaVuSans-Bold", font_first)
+    y_first = y_last + font_last + 6
+    c.drawCentredString(page_cx, y_first, first_upper)
+
+    # Company — optional third line, rendered in brand blue #005BAB
+    if attendee_company:
+        company_upper = attendee_company.upper()
+        font_company = adjust_font_size(c, company_upper, max_text_width, initial_font_size=18)
+        c.setFont("DejaVuSans-Bold", font_company)
+        c.setFillColor(colors.HexColor("#005BAB"))
+        y_company = y_first + font_first + 4
+        c.drawCentredString(page_cx, y_company, company_upper)
+        c.setFillColor(colors.black)  # reset to black for subsequent content
+
+    c.save()
 
     # Open the destination PDF file and draw the QR code and attendee name on it
     doc = fitz.open(output_pdf)
@@ -155,6 +158,11 @@ def add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size,
     
     print(f"Modified PDF saved at {output_pdf}")
 
+def save_qr_code_svg(url, output_file):
+    svg_buffer = generate_qr_code_svg(url)
+    with open(output_file, 'wb') as f:
+        f.write(svg_buffer.getvalue())
+
 def main(qr_data, output_pdf):
     template_pdf = os.getenv("TEMPLATE_PDF")
     position_str = os.getenv("POSITION")
@@ -165,3 +173,10 @@ def main(qr_data, output_pdf):
     delete_temp_files = True
 
     add_qr_to_pdf_template(template_pdf, output_pdf, qr_data, position, qr_size, delete_temp_files)
+
+# Ejemplo de uso
+if __name__ == "__main__":
+    url = "https://globalai-madrid-2025.sessionize.com/"
+    output_file = "qr_code.svg"
+    save_qr_code_svg(url, output_file)
+    print(f"QR code SVG saved to {output_file}")

@@ -166,6 +166,15 @@ input/*
 !input/.gitkeep
 output/*
 !output/.gitkeep
-templates/*
-!templates/.gitkeep
+
+# Generated artifacts (QR codes temporales)
+qr_code.svg
+*.qr.svg
+
+# Local dev configuration (no incluir en el repo)
+mcp.json
+
+# Windows metadata (Zone.Identifier)
+*:Zone.Identifier
+*.Zone.Identifier
 qr-generator/*
