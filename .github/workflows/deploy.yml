@@ -78,12 +78,14 @@ jobs:
       - name: Crear Resource Group
         run: |
           ENV="${{ github.event.inputs.environment || 'prod' }}"
+          # Si el RG ya existe, respetar su ubicación (evita InvalidResourceGroupLocation)
+          RG_LOCATION=$(az group show --name "${{ vars.AZURE_RG }}" --query location -o tsv 2>/dev/null || echo "${{ env.AZURE_LOCATION }}")
           az group create \
             --name     "${{ vars.AZURE_RG }}" \
-            --location "${{ env.AZURE_LOCATION }}" \
+            --location "$RG_LOCATION" \
             --tags     Environment="$ENV" Project=lanyards-ai-generator ManagedBy=Bicep-IaC \
             --output none
-          echo "✅ Resource Group: ${{ vars.AZURE_RG }}"
+          echo "✅ Resource Group: ${{ vars.AZURE_RG }} (location: $RG_LOCATION)"
 
       # ── 3. Crear AKV e inyectar secretos (idempotente) ────────────────────
       #   El AKV se crea también vía Bicep (idempotente), pero necesitamos
