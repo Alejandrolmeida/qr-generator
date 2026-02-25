@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "16168892586872802492"
+      "templateHash": "9346032076872635013"
     }
   },
   "parameters": {
@@ -82,6 +82,20 @@
       "defaultValue": 10,
       "metadata": {
         "description": "Capacidad TPM del deployment en miles"
+      }
+    },
+    "chainlitUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "URL pública del frontend, p.ej. https://lanyard.azurebrains.com. Necesario para OAuth redirect."
+      }
+    },
+    "allowedEmails": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Emails autorizados separados por coma. Vacío = cualquier usuario del tenant."
       }
     }
   },
@@ -729,6 +743,12 @@
           },
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.keyVaultUri.value]"
+          },
+          "chainlitUrl": {
+            "value": "[parameters('chainlitUrl')]"
+          },
+          "allowedEmails": {
+            "value": "[parameters('allowedEmails')]"
           }
         },
         "template": {
@@ -738,7 +758,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "12500567756717847300"
+              "templateHash": "7575566197042148866"
             }
           },
           "parameters": {
@@ -794,6 +814,20 @@
               "type": "string",
               "metadata": {
                 "description": "URI del AKV, p.ej. https://kv-lanyards-aigen-dev.vault.azure.net/"
+              }
+            },
+            "chainlitUrl": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "URL pública del frontend (p.ej. https://lanyard.azurebrains.com)"
+              }
+            },
+            "allowedEmails": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Lista de emails separados por coma que pueden acceder. Vacío = cualquier usuario del tenant."
               }
             }
           },
@@ -941,6 +975,21 @@
                       "name": "chainlit-auth-secret",
                       "keyVaultUrl": "[format('{0}secrets/lanyards-chainlit-auth-secret', parameters('keyVaultUri'))]",
                       "identity": "[parameters('uamiId')]"
+                    },
+                    {
+                      "name": "oauth-client-id",
+                      "keyVaultUrl": "[format('{0}secrets/lanyards-oauth-client-id', parameters('keyVaultUri'))]",
+                      "identity": "[parameters('uamiId')]"
+                    },
+                    {
+                      "name": "oauth-client-secret",
+                      "keyVaultUrl": "[format('{0}secrets/lanyards-oauth-client-secret', parameters('keyVaultUri'))]",
+                      "identity": "[parameters('uamiId')]"
+                    },
+                    {
+                      "name": "oauth-tenant-id",
+                      "keyVaultUrl": "[format('{0}secrets/lanyards-oauth-tenant-id', parameters('keyVaultUri'))]",
+                      "identity": "[parameters('uamiId')]"
                     }
                   ]
                 },
@@ -977,6 +1026,30 @@
                         {
                           "name": "CHAINLIT_AUTH_SECRET",
                           "secretRef": "chainlit-auth-secret"
+                        },
+                        {
+                          "name": "OAUTH_AZURE_AD_CLIENT_ID",
+                          "secretRef": "oauth-client-id"
+                        },
+                        {
+                          "name": "OAUTH_AZURE_AD_CLIENT_SECRET",
+                          "secretRef": "oauth-client-secret"
+                        },
+                        {
+                          "name": "OAUTH_AZURE_AD_TENANT_ID",
+                          "secretRef": "oauth-tenant-id"
+                        },
+                        {
+                          "name": "OAUTH_AZURE_AD_ENABLE_SINGLE_TENANT",
+                          "value": "true"
+                        },
+                        {
+                          "name": "CHAINLIT_URL",
+                          "value": "[parameters('chainlitUrl')]"
+                        },
+                        {
+                          "name": "ALLOWED_EMAILS",
+                          "value": "[parameters('allowedEmails')]"
                         }
                       ]
                     }

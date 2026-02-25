@@ -12,15 +12,13 @@ from io import BytesIO
 from pathlib import Path
 
 import fitz  # PyMuPDF
-import qrcode
-import qrcode.image.svg
-from reportlab.graphics import renderPDF
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter  # noqa: F401
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from svglib.svglib import svg2rlg
+
+from app.services.qr_service import generate_styled_qr_png_bytes
 
 # Registrar fuente al importar el módulo
 _FONTS_REGISTERED = False
@@ -39,29 +37,34 @@ def _ensure_fonts(fonts_folder: str) -> None:
 
 # ─── QR helpers ───────────────────────────────────────────────────────────────
 
-def generate_qr_code_svg(data: str) -> BytesIO:
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=10,
-        border=4,
+def generate_qr_code_png(
+    data: str,
+    fg_color: str = "#000000",
+    bg_color: str = "#FFFFFF",
+    eye_color: str | None = None,
+    module_roundness: float = 0.85,
+    logo_path: str | None = None,
+    logo_scale: float = 0.22,
+) -> BytesIO:
+    """
+    Genera un QR estilizado (rounded premium) como PNG en memoria.
+    Sustituye a la antigua implementación SVG básica.
+    """
+    png_bytes = generate_styled_qr_png_bytes(
+        data=data,
+        logo_path=logo_path,
+        fg_color=fg_color,
+        bg_color=bg_color,
+        eye_color=eye_color,
+        module_roundness=module_roundness,
+        logo_scale=logo_scale,
+        cell_px=40,
+        border_cells=4,
+        dpi=300,
     )
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(image_factory=qrcode.image.svg.SvgImage)
-    buf = BytesIO()
-    img.save(buf)
+    buf = BytesIO(png_bytes)
     buf.seek(0)
     return buf
-
-
-def _scale_drawing(drawing, width: int, height: int):
-    sx = width / drawing.width
-    sy = height / drawing.height
-    drawing.width = width
-    drawing.height = height
-    drawing.scale(sx, sy)
-    return drawing
 
 
 def _adjust_font_size(
@@ -95,6 +98,13 @@ def generate_accreditation(
     attendee_company: str = "",
     fonts_folder: str = "fonts",
     keep_temp: bool = False,
+    # ── Opciones de estilo QR ─────────────────────────────────────────────
+    qr_fg_color: str = "#000000",
+    qr_bg_color: str = "#FFFFFF",
+    qr_eye_color: str | None = None,
+    qr_module_roundness: float = 0.85,
+    qr_logo_path: str | None = None,
+    qr_logo_scale: float = 0.22,
 ) -> None:
     """
     Genera una acreditación PDF para un asistente.
@@ -124,14 +134,19 @@ def generate_accreditation(
         tmpl_w = tmpl[0].rect.width
         tmpl_h = tmpl[0].rect.height
 
-    # ── Generar SVG del QR ────────────────────────────────────────────────────
-    qr_svg_buf = generate_qr_code_svg(qr_data)
-    tmp_svg = tempfile.NamedTemporaryFile(delete=False, suffix=".svg")
-    tmp_svg.write(qr_svg_buf.read())
-    tmp_svg.close()
-
-    drawing = svg2rlg(tmp_svg.name)
-    drawing = _scale_drawing(drawing, qr_size, qr_size)
+    # ── Generar PNG del QR (estilo rounded premium) ─────────────────────────
+    qr_png_buf = generate_qr_code_png(
+        data=qr_data,
+        fg_color=qr_fg_color,
+        bg_color=qr_bg_color,
+        eye_color=qr_eye_color,
+        module_roundness=qr_module_roundness,
+        logo_path=qr_logo_path,
+        logo_scale=qr_logo_scale,
+    )
+    tmp_png = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    tmp_png.write(qr_png_buf.read())
+    tmp_png.close()
 
     # ── Crear overlay PDF al mismo tamaño que plantilla ───────────────────────
     tmp_overlay = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -139,8 +154,8 @@ def generate_accreditation(
 
     c = canvas.Canvas(tmp_overlay.name, pagesize=(tmpl_w, tmpl_h))
 
-    # QR
-    renderPDF.draw(drawing, c, qr_x, qr_y)
+    # QR (insertar PNG directamente — preserva todos los detalles redondeados)
+    c.drawImage(tmp_png.name, qr_x, qr_y, width=qr_size, height=qr_size, mask="auto")
 
     # TextZone: centrado horizontal, encima del QR
     page_cx = tmpl_w / 2
@@ -188,7 +203,7 @@ def generate_accreditation(
     shutil.move(tmp_final.name, output_path)
 
     if not keep_temp:
-        os.unlink(tmp_svg.name)
+        os.unlink(tmp_png.name)
         os.unlink(tmp_overlay.name)
 
 

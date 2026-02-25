@@ -14,8 +14,8 @@ python-dotenv>=1.1.0
 reportlab>=4.4.4
 PyMuPDF>=1.26.5
 svglib>=1.5.1
-qrcode[pil]>=8.2
-Pillow>=12.0.0
+qrcode[pil]>=8.2          # QR matrix + render (también usado por qr_service.py)
+Pillow>=12.0.0             # Renderizado PNG rounded premium (qr_service.py)
 
 # ── Lectura de Excel ──────────────────────────────────────────────────────────
 pandas>=2.3.0
