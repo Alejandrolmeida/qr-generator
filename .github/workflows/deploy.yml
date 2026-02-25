@@ -136,6 +136,7 @@ jobs:
 
       # ── 5. What-if (solo informativo) ────────────────────────────────────
       - name: Validar Bicep (what-if)
+        continue-on-error: true   # informativo — no bloquea el deploy
         run: |
           ENV="${{ github.event.inputs.environment || 'prod' }}"
           az deployment group what-if \
