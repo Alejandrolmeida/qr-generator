@@ -90,23 +90,15 @@ module monitoring 'modules/monitoring.bicep' = {
 module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {
-    prefix:   prefix
-    location: location
-    tags:     allTags
+    prefix:           prefix
+    location:         location
+    tags:             allTags
+    uamiPrincipalId:  uami.properties.principalId
   }
 }
 
-// Storage Blob Data Contributor = la UAMI puede leer/escribir blobs sin connection string
-// ba92f5b4-2d11-453d-a403-e96b0029c9fe = Storage Blob Data Contributor
-resource storageBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name:  guid(resourceGroup().id, uami.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-    principalId:      uami.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
+// Storage Blob Data Contributor — asignado dentro de modules/storage.bicep
+// para que el scope sea el propio storage account y evitar RoleAssignmentExists.
 
 module keyVault 'modules/key-vault.bicep' = {
   name: 'key-vault'
