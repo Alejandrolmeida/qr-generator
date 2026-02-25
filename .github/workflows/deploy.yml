@@ -1,25 +1,30 @@
 name: Deploy — Lanyards AI Generator
 
-# ─── Descripción ─────────────────────────────────────────────────────────────
-# Despliega la infraestructura (Bicep) y actualiza las Container Apps.
-# Todos los secretos se leen del Azure Key Vault en tiempo de ejecución.
-# GitHub solo almacena las credenciales OIDC (identidad, no secretos de negocio).
+# ─── Flujo de secretos ────────────────────────────────────────────────────────
 #
-# ─── Secretos en GitHub (solo OIDC — los mínimos imprescindibles) ─────────────
-#   AZURE_CLIENT_ID         → App Registration para OIDC
-#   AZURE_TENANT_ID         → Tenant de la suscripción Sponsorship
-#   AZURE_SUBSCRIPTION_ID   → ID de la suscripción Sponsorship
+#  GitHub Secrets (cifrados, solo para CI/CD):
+#    AZURE_CLIENT_ID         → App Registration OIDC (identidad del pipeline)
+#    AZURE_TENANT_ID         → Tenant de la suscripción
+#    AZURE_SUBSCRIPTION_ID   → ID de la suscripción
+#    AZURE_OPENAI_API_KEY    → Se sincroniza a AKV en cada deploy
+#    CHAINLIT_AUTH_SECRET    → Se sincroniza a AKV en cada deploy
 #
-# ─── Variables de repositorio (Settings → Variables, no Secrets) ─────────────
-#   AZURE_RG       → Resource Group del proyecto, e.g. rg-lanyards-aigen
-#   KEY_VAULT_NAME → Nombre del AKV, e.g. kv-lanyards-aigen
-#   ACR_NAME       → Nombre corto del ACR, e.g. acrazurebrainschat
+#  GitHub Variables (no sensibles, Settings → Variables):
+#    AZURE_RG   → Resource Group, p.ej. rg-lanyards-aigen
+#    ACR_NAME   → Nombre corto del ACR, p.ej. acrazurebrainschat
 #
-# ─── Secretos que deben existir en el AKV ────────────────────────────────────
-#   lanyards-acr-username         → usuario del ACR (o token de acceso)
-#   lanyards-acr-password         → password/token del ACR
-#   lanyards-openai-api-key       → clave de Azure OpenAI
-#   lanyards-chainlit-auth-secret → secreto de autenticación Chainlit
+#  Azure Key Vault (authoritative runtime store):
+#    lanyards-openai-api-key        ← sincronizado desde GitHub Secret
+#    lanyards-chainlit-auth-secret  ← sincronizado desde GitHub Secret
+#
+#  Las Container Apps leen AKV directamente vía UAMI en runtime.
+#  El pipeline NUNCA pasa secretos como parámetros Bicep.
+#
+# ─── Prerequisito (una sola vez) ─────────────────────────────────────────────
+#  Ejecutar scripts/setup-github-secrets.sh para:
+#    1. Crear el App Registration con credenciales OIDC federadas
+#    2. Asignar los roles necesarios (Contributor, AcrPush, AcrPull sobre UAMI)
+#    3. Subir AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID a GitHub
 
 on:
   workflow_run:
@@ -29,20 +34,21 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno (afecta tags y réplicas)'
+        description: 'Entorno de despliegue'
         required: false
         default: 'prod'
         type: choice
         options: [dev, prod]
 
 permissions:
-  id-token: write   # OIDC
+  id-token: write   # OIDC — necesario para az login
   contents: read
 
 env:
   BACKEND_APP:    acrazurebrainschat.azurecr.io/lanyards/backend-app:latest
   FRONTEND_APP:   acrazurebrainschat.azurecr.io/lanyards/frontend-app:latest
   AZURE_LOCATION: westeurope
+  PROJECT_NAME:   lanyards-aigen
 
 jobs:
   deploy:
@@ -58,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── 1. Login Azure (OIDC) ─────────────────────────────────────────────
+      # ── 1. Login Azure (OIDC — sin credenciales en GitHub) ───────────────
       - name: Login Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -66,40 +72,7 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── 2. Leer todos los secretos del AKV ───────────────────────────────
-      #   El SP OIDC necesita el rol "Key Vault Secrets User" sobre el AKV.
-      - name: Leer secretos del AKV
-        id: kv
-        run: |
-          KV="${{ vars.KEY_VAULT_NAME }}"
-          echo "🔑 Leyendo secretos de: $KV"
-
-          get_secret() {
-            az keyvault secret show \
-              --vault-name "$KV" \
-              --name "$1" \
-              --query value \
-              --output tsv 2>/dev/null
-          }
-
-          ACR_USR=$(get_secret "lanyards-acr-username")
-          ACR_PWD=$(get_secret "lanyards-acr-password")
-          OAI_KEY=$(get_secret "lanyards-openai-api-key")
-          CL_SEC=$(get_secret  "lanyards-chainlit-auth-secret")
-
-          # Enmascarar valores en los logs de GitHub Actions
-          echo "::add-mask::$ACR_USR"
-          echo "::add-mask::$ACR_PWD"
-          echo "::add-mask::$OAI_KEY"
-          echo "::add-mask::$CL_SEC"
-
-          echo "acr_username=$ACR_USR"          >> $GITHUB_OUTPUT
-          echo "acr_password=$ACR_PWD"          >> $GITHUB_OUTPUT
-          echo "openai_api_key=$OAI_KEY"        >> $GITHUB_OUTPUT
-          echo "chainlit_auth_secret=$CL_SEC"   >> $GITHUB_OUTPUT
-          echo "✅ Secretos cargados desde AKV"
-
-      # ── 3. Crear Resource Group si no existe ──────────────────────────────
+      # ── 2. Crear Resource Group si no existe ─────────────────────────────
       - name: Crear Resource Group
         run: |
           ENV="${{ github.event.inputs.environment || 'prod' }}"
@@ -110,11 +83,72 @@ jobs:
             --output none
           echo "✅ Resource Group: ${{ vars.AZURE_RG }}"
 
+      # ── 3. Crear AKV e inyectar secretos (idempotente) ────────────────────
+      #   El AKV se crea también vía Bicep (idempotente), pero necesitamos
+      #   que los secretos existan ANTES de que Bicep despliegue las Container
+      #   Apps (que los referencian vía keyVaultUrl).
+      - name: Provisionar AKV y sincronizar secretos
+        run: |
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
+          KV_NAME="kv-${{ env.PROJECT_NAME }}-${ENV}"
+
+          # Truncar a 24 chars (límite de AKV)
+          KV_NAME="${KV_NAME:0:24}"
+          echo "kv_name=$KV_NAME" >> $GITHUB_ENV
+
+          # Crear AKV si no existe (RBAC mode — sin access policies)
+          EXISTING=$(az keyvault show --name "$KV_NAME" --query name -o tsv 2>/dev/null || echo "")
+          if [ -z "$EXISTING" ]; then
+            echo "🔑 Creando Key Vault: $KV_NAME"
+            az keyvault create \
+              --name              "$KV_NAME" \
+              --resource-group    "${{ vars.AZURE_RG }}" \
+              --location          "${{ env.AZURE_LOCATION }}" \
+              --enable-rbac-authorization true \
+              --retention-days    7 \
+              --output none
+            echo "✅ Key Vault creado"
+          else
+            echo "✅ Key Vault ya existe: $KV_NAME"
+          fi
+
+          # Asignar Key Vault Secrets Officer al SP del pipeline (para poder escribir)
+          SP_OID=$(az ad sp show \
+            --id "$(az account show --query 'user.name' -o tsv)" \
+            --query id -o tsv 2>/dev/null || \
+            az account show --query 'user.assignedIdentityInfo' -o tsv 2>/dev/null || \
+            az rest --method GET \
+              --url "https://graph.microsoft.com/v1.0/servicePrincipals?\$filter=appId eq '${{ secrets.AZURE_CLIENT_ID }}'" \
+              --query "value[0].id" -o tsv)
+
+          KV_ID=$(az keyvault show --name "$KV_NAME" --query id -o tsv)
+          az role assignment create \
+            --assignee-object-id "$SP_OID" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Key Vault Secrets Officer" \
+            --scope "$KV_ID" \
+            --output none 2>/dev/null || echo "ℹ️ Rol ya asignado"
+
+          # Sincronizar secretos desde GitHub Secrets → AKV
+          echo "📝 Sincronizando secretos a AKV..."
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "lanyards-openai-api-key" \
+            --value "${{ secrets.AZURE_OPENAI_API_KEY }}" \
+            --output none
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "lanyards-chainlit-auth-secret" \
+            --value "${{ secrets.CHAINLIT_AUTH_SECRET }}" \
+            --output none
+
+          echo "✅ Secretos sincronizados en AKV: $KV_NAME"
+
       # ── 4. Instalar Bicep CLI ─────────────────────────────────────────────
       - name: Instalar Bicep
         run: az bicep install
 
-      # ── 5. Validar Bicep (what-if) ────────────────────────────────────────
+      # ── 5. What-if (solo informativo) ────────────────────────────────────
       - name: Validar Bicep (what-if)
         run: |
           ENV="${{ github.event.inputs.environment || 'prod' }}"
@@ -123,14 +157,12 @@ jobs:
             --template-file  bicep/main.bicep \
             --parameters     bicep/parameters/${ENV}.bicepparam \
             --parameters \
-              acrUsername="${{ steps.kv.outputs.acr_username }}" \
-              acrPassword="${{ steps.kv.outputs.acr_password }}" \
-              openAiApiKey="${{ steps.kv.outputs.openai_api_key }}" \
-              chainlitAuthSecret="${{ steps.kv.outputs.chainlit_auth_secret }}" \
               backendImage="${{ env.BACKEND_APP }}" \
               frontendImage="${{ env.FRONTEND_APP }}"
 
-      # ── 6. Desplegar infraestructura ──────────────────────────────────────
+      # ── 6. Desplegar infraestructura completa ─────────────────────────────
+      #   main.bicep crea: UAMI, KV (idempotente), Storage, Container Apps.
+      #   Los roles AcrPull y Storage Blob Data Contributor se asignan aquí.
       - name: Deploy Bicep
         id: deploy
         run: |
@@ -140,10 +172,6 @@ jobs:
             --template-file  bicep/main.bicep \
             --parameters     bicep/parameters/${ENV}.bicepparam \
             --parameters \
-              acrUsername="${{ steps.kv.outputs.acr_username }}" \
-              acrPassword="${{ steps.kv.outputs.acr_password }}" \
-              openAiApiKey="${{ steps.kv.outputs.openai_api_key }}" \
-              chainlitAuthSecret="${{ steps.kv.outputs.chainlit_auth_secret }}" \
               backendImage="${{ env.BACKEND_APP }}" \
               frontendImage="${{ env.FRONTEND_APP }}" \
             --query "properties.outputs" \
@@ -151,12 +179,36 @@ jobs:
 
           FRONTEND_URL=$(echo "$OUTPUT" | jq -r '.frontendUrl.value')
           BACKEND_URL=$(echo "$OUTPUT"  | jq -r '.backendUrl.value')
+          KV_NAME_OUT=$(echo "$OUTPUT"  | jq -r '.keyVaultName.value')
+          UAMI_PID=$(echo "$OUTPUT"     | jq -r '.uamiPrincipalId.value')
+
           echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
           echo "backend_url=$BACKEND_URL"   >> $GITHUB_OUTPUT
+          echo "kv_name=$KV_NAME_OUT"       >> $GITHUB_OUTPUT
+          echo "uami_principal_id=$UAMI_PID" >> $GITHUB_OUTPUT
           echo "✅ Frontend: $FRONTEND_URL"
           echo "✅ Backend:  $BACKEND_URL"
+          echo "✅ Key Vault: $KV_NAME_OUT"
 
-      # ── 7. Health check (espera cold start de Container Apps) ─────────────
+      # ── 7. Asignar AcrPull a la UAMI (idempotente) ────────────────────────
+      #   La UAMI necesita AcrPull para poder hacer pull de imágenes desde ACR.
+      #   El ACR es un recurso externo (distinto RG), por eso se asigna aquí.
+      - name: Asignar AcrPull a UAMI
+        run: |
+          ACR_ID=$(az acr show \
+            --name "${{ vars.ACR_NAME }}" \
+            --query id -o tsv)
+
+          az role assignment create \
+            --assignee-object-id "${{ steps.deploy.outputs.uami_principal_id }}" \
+            --assignee-principal-type ServicePrincipal \
+            --role "AcrPull" \
+            --scope "$ACR_ID" \
+            --output none 2>/dev/null || echo "ℹ️ AcrPull ya asignado"
+
+          echo "✅ AcrPull asignado a UAMI sobre ACR"
+
+      # ── 8. Health check (espera cold start de Container Apps) ─────────────
       - name: Health check backend
         run: |
           echo "⏳ Esperando arranque del backend…"
@@ -173,7 +225,7 @@ jobs:
           echo "❌ Timeout: backend no respondió en ~5 min"
           exit 1
 
-      # ── 8. Resumen ────────────────────────────────────────────────────────
+      # ── 9. Resumen ────────────────────────────────────────────────────────
       - name: Resumen deploy
         if: always()
         run: |
@@ -181,11 +233,18 @@ jobs:
           echo "## 🚀 Deploy Lanyards AI Generator" >> $GITHUB_STEP_SUMMARY
           echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Entorno        | \`${ENV}\` |"                                              >> $GITHUB_STEP_SUMMARY
-          echo "| Resource Group | \`${{ vars.AZURE_RG }}\` |"                               >> $GITHUB_STEP_SUMMARY
-          echo "| Key Vault      | \`${{ vars.KEY_VAULT_NAME }}\` |"                         >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend       | ${{ steps.deploy.outputs.frontend_url }} |"              >> $GITHUB_STEP_SUMMARY
-          echo "| Backend App    | \`${{ env.BACKEND_APP }}\` |"                             >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend App   | \`${{ env.FRONTEND_APP }}\` |"                            >> $GITHUB_STEP_SUMMARY
-          echo "| Commit         | \`${{ github.sha }}\` |"                                  >> $GITHUB_STEP_SUMMARY
-          echo "| Autor          | ${{ github.actor }} |"                                    >> $GITHUB_STEP_SUMMARY
+          echo "| Entorno        | \`${ENV}\` |"                                           >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | \`${{ vars.AZURE_RG }}\` |"                            >> $GITHUB_STEP_SUMMARY
+          echo "| Key Vault      | \`${{ steps.deploy.outputs.kv_name }}\` |"            >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend       | ${{ steps.deploy.outputs.frontend_url }} |"           >> $GITHUB_STEP_SUMMARY
+          echo "| Backend App    | \`${{ env.BACKEND_APP }}\` |"                          >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend App   | \`${{ env.FRONTEND_APP }}\` |"                         >> $GITHUB_STEP_SUMMARY
+          echo "| Commit         | \`${{ github.sha }}\` |"                               >> $GITHUB_STEP_SUMMARY
+          echo "| Autor          | ${{ github.actor }} |"                                 >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Secretos" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret AKV | Fuente |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`lanyards-openai-api-key\` | GitHub Secret \`AZURE_OPENAI_API_KEY\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`lanyards-chainlit-auth-secret\` | GitHub Secret \`CHAINLIT_AUTH_SECRET\` |" >> $GITHUB_STEP_SUMMARY
+

@@ -64,5 +64,6 @@ resource outputContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
 
 // ── Outputs ───────────────────────────────────────────────────────────────────
 output storageAccountName string = storage.name
-output storageAccountId string   = storage.id
-output connectionString string   = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
+output storageAccountId   string = storage.id
+// connectionString eliminado: el acceso se realiza via Managed Identity
+// (Storage Blob Data Contributor asignado en main.bicep sobre la UAMI)
