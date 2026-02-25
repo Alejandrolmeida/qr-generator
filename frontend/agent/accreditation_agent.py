@@ -372,13 +372,13 @@ async def _chat_with_agent(user_text: str, state: dict) -> None:
         return
 
     msg = cl.Message(content="")
+    await msg.send()
     full = ""
     try:
-        async with msg:
-            async for chunk in response:
-                delta = chunk.choices[0].delta.content or "" if chunk.choices else ""
-                await msg.stream_token(delta)
-                full += delta
+        async for chunk in response:
+            delta = chunk.choices[0].delta.content or "" if chunk.choices else ""
+            await msg.stream_token(delta)
+            full += delta
     except Exception as e:
         print(f"[ERROR] streaming failed: {e}")
         if not full:
