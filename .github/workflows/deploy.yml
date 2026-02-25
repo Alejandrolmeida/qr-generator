@@ -1,17 +1,25 @@
 name: Deploy — QR Accreditation
 
 # ─── Descripción ─────────────────────────────────────────────────────────────
-# Despliega la infraestructura (Bicep) y actualiza las Container Apps
-# con las imágenes recién publicadas en ACR.
+# Despliega la infraestructura (Bicep) y actualiza las Container Apps.
+# Todos los secretos se leen del Azure Key Vault en tiempo de ejecución.
+# GitHub solo almacena las credenciales OIDC (identidad, no secretos de negocio).
 #
-# Se ejecuta automáticamente tras un build exitoso en main,
-# o manualmente para forzar un re-deploy.
+# ─── Secretos en GitHub (solo OIDC — los mínimos imprescindibles) ─────────────
+#   AZURE_CLIENT_ID         → App Registration para OIDC
+#   AZURE_TENANT_ID         → Tenant de la suscripción Sponsorship
+#   AZURE_SUBSCRIPTION_ID   → ID de la suscripción Sponsorship
 #
-# ─── Secretos necesarios en GitHub ───────────────────────────────────────────
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  (OIDC)
-#   ACR_USERNAME, ACR_PASSWORD
-#   AZURE_OPENAI_API_KEY
-#   CHAINLIT_AUTH_SECRET
+# ─── Variables de repositorio (Settings → Variables, no Secrets) ─────────────
+#   AZURE_RG       → Resource Group compartido, e.g. rg-azurebrains-sponsorship
+#   KEY_VAULT_NAME → Nombre del AKV, e.g. kv-azurebrains
+#   ACR_NAME       → Nombre corto del ACR, e.g. acrazurebrainschat
+#
+# ─── Secretos que deben existir en el AKV ────────────────────────────────────
+#   qrgen-acr-username         → usuario del ACR (o token de acceso)
+#   qrgen-acr-password         → password/token del ACR
+#   qrgen-openai-api-key       → clave de Azure OpenAI
+#   qrgen-chainlit-auth-secret → secreto de autenticación Chainlit
 
 on:
   workflow_run:
@@ -21,9 +29,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno a desplegar'
-        required: true
-        default: 'dev'
+        description: 'Entorno (afecta tags y réplicas)'
+        required: false
+        default: 'prod'
         type: choice
         options: [dev, prod]
 
@@ -32,29 +40,25 @@ permissions:
   contents: read
 
 env:
-  ACR:              acrazurebrainschat.azurecr.io
-  BACKEND_APP:      acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
-  FRONTEND_APP:     acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
-  AZURE_RG_DEV:     rg-qrgen-dev
-  AZURE_RG_PROD:    rg-qrgen-prod
-  AZURE_LOCATION:   westeurope
+  BACKEND_APP:    acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
+  FRONTEND_APP:   acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
+  AZURE_LOCATION: westeurope
 
 jobs:
   deploy:
-    name: Deploy ${{ github.event.inputs.environment || 'dev' }}
+    name: Deploy ${{ github.event.inputs.environment || 'prod' }}
     runs-on: ubuntu-latest
-    # Solo ejecutar si el workflow de build terminó correctamente (o si es manual)
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
 
     environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
+      name: ${{ github.event.inputs.environment || 'prod' }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Login Azure (OIDC — sin secretos de client secret) ────────────────
+      # ── 1. Login Azure (OIDC) ─────────────────────────────────────────────
       - name: Login Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -62,74 +66,100 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ── Determinar entorno ─────────────────────────────────────────────────
-      - name: Configurar variables de entorno
-        id: env
+      # ── 2. Leer todos los secretos del AKV ───────────────────────────────
+      #   El SP OIDC necesita el rol "Key Vault Secrets User" sobre el AKV.
+      - name: Leer secretos del AKV
+        id: kv
         run: |
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          echo "env=$ENV" >> $GITHUB_OUTPUT
-          if [[ "$ENV" == "prod" ]]; then
-            echo "rg=${{ env.AZURE_RG_PROD }}" >> $GITHUB_OUTPUT
-          else
-            echo "rg=${{ env.AZURE_RG_DEV }}" >> $GITHUB_OUTPUT
-          fi
+          KV="${{ vars.KEY_VAULT_NAME }}"
+          echo "🔑 Leyendo secretos de: $KV"
 
-      # ── Crear Resource Group si no existe ─────────────────────────────────
+          get_secret() {
+            az keyvault secret show \
+              --vault-name "$KV" \
+              --name "$1" \
+              --query value \
+              --output tsv 2>/dev/null
+          }
+
+          ACR_USR=$(get_secret "qrgen-acr-username")
+          ACR_PWD=$(get_secret "qrgen-acr-password")
+          OAI_KEY=$(get_secret "qrgen-openai-api-key")
+          CL_SEC=$(get_secret  "qrgen-chainlit-auth-secret")
+
+          # Enmascarar valores en los logs de GitHub Actions
+          echo "::add-mask::$ACR_USR"
+          echo "::add-mask::$ACR_PWD"
+          echo "::add-mask::$OAI_KEY"
+          echo "::add-mask::$CL_SEC"
+
+          echo "acr_username=$ACR_USR"          >> $GITHUB_OUTPUT
+          echo "acr_password=$ACR_PWD"          >> $GITHUB_OUTPUT
+          echo "openai_api_key=$OAI_KEY"        >> $GITHUB_OUTPUT
+          echo "chainlit_auth_secret=$CL_SEC"   >> $GITHUB_OUTPUT
+          echo "✅ Secretos cargados desde AKV"
+
+      # ── 3. Crear Resource Group si no existe ──────────────────────────────
       - name: Crear Resource Group
         run: |
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
           az group create \
-            --name     ${{ steps.env.outputs.rg }} \
-            --location ${{ env.AZURE_LOCATION }} \
-            --tags Environment=${{ steps.env.outputs.env }} Project=qr-accreditation ManagedBy=Bicep-IaC \
+            --name     "${{ vars.AZURE_RG }}" \
+            --location "${{ env.AZURE_LOCATION }}" \
+            --tags     Environment="$ENV" Project=qr-accreditation ManagedBy=Bicep-IaC \
             --output none
-          echo "✅ Resource Group: ${{ steps.env.outputs.rg }}"
+          echo "✅ Resource Group: ${{ vars.AZURE_RG }}"
 
-      # ── Instalar Bicep CLI ─────────────────────────────────────────────────
+      # ── 4. Instalar Bicep CLI ─────────────────────────────────────────────
       - name: Instalar Bicep
         run: az bicep install
 
-      # ── Validar Bicep (what-if) ────────────────────────────────────────────
+      # ── 5. Validar Bicep (what-if) ────────────────────────────────────────
       - name: Validar Bicep (what-if)
         run: |
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
           az deployment group what-if \
-            --resource-group  ${{ steps.env.outputs.rg }} \
-            --template-file   bicep/main.bicep \
-            --parameters      bicep/parameters/${{ steps.env.outputs.env }}.bicepparam \
-            --parameters      acrUsername='${{ secrets.ACR_USERNAME }}' \
-                              acrPassword='${{ secrets.ACR_PASSWORD }}' \
-                              openAiApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' \
-                              chainlitAuthSecret='${{ secrets.CHAINLIT_AUTH_SECRET }}' \
-                              backendImage='${{ env.BACKEND_APP }}' \
-                              frontendImage='${{ env.FRONTEND_APP }}'
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --template-file  bicep/main.bicep \
+            --parameters     bicep/parameters/${ENV}.bicepparam \
+            --parameters \
+              acrUsername="${{ steps.kv.outputs.acr_username }}" \
+              acrPassword="${{ steps.kv.outputs.acr_password }}" \
+              openAiApiKey="${{ steps.kv.outputs.openai_api_key }}" \
+              chainlitAuthSecret="${{ steps.kv.outputs.chainlit_auth_secret }}" \
+              backendImage="${{ env.BACKEND_APP }}" \
+              frontendImage="${{ env.FRONTEND_APP }}"
 
-      # ── Desplegar infraestructura ──────────────────────────────────────────
+      # ── 6. Desplegar infraestructura ──────────────────────────────────────
       - name: Deploy Bicep
         id: deploy
         run: |
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
           OUTPUT=$(az deployment group create \
-            --resource-group  ${{ steps.env.outputs.rg }} \
-            --template-file   bicep/main.bicep \
-            --parameters      bicep/parameters/${{ steps.env.outputs.env }}.bicepparam \
-            --parameters      acrUsername='${{ secrets.ACR_USERNAME }}' \
-                              acrPassword='${{ secrets.ACR_PASSWORD }}' \
-                              openAiApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' \
-                              chainlitAuthSecret='${{ secrets.CHAINLIT_AUTH_SECRET }}' \
-                              backendImage='${{ env.BACKEND_APP }}' \
-                              frontendImage='${{ env.FRONTEND_APP }}' \
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --template-file  bicep/main.bicep \
+            --parameters     bicep/parameters/${ENV}.bicepparam \
+            --parameters \
+              acrUsername="${{ steps.kv.outputs.acr_username }}" \
+              acrPassword="${{ steps.kv.outputs.acr_password }}" \
+              openAiApiKey="${{ steps.kv.outputs.openai_api_key }}" \
+              chainlitAuthSecret="${{ steps.kv.outputs.chainlit_auth_secret }}" \
+              backendImage="${{ env.BACKEND_APP }}" \
+              frontendImage="${{ env.FRONTEND_APP }}" \
             --query "properties.outputs" \
             --output json)
 
           FRONTEND_URL=$(echo "$OUTPUT" | jq -r '.frontendUrl.value')
-          BACKEND_URL=$(echo "$OUTPUT" | jq -r '.backendUrl.value')
+          BACKEND_URL=$(echo "$OUTPUT"  | jq -r '.backendUrl.value')
           echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
           echo "backend_url=$BACKEND_URL"   >> $GITHUB_OUTPUT
           echo "✅ Frontend: $FRONTEND_URL"
           echo "✅ Backend:  $BACKEND_URL"
 
-      # ── Health check ──────────────────────────────────────────────────────
+      # ── 7. Health check (espera cold start de Container Apps) ─────────────
       - name: Health check backend
         run: |
-          echo "⏳ Esperando arranque del backend (Container Apps escala desde 0)…"
+          echo "⏳ Esperando arranque del backend…"
           for i in $(seq 1 20); do
             STATUS=$(curl -m 10 -s -o /dev/null -w "%{http_code}" \
               "${{ steps.deploy.outputs.backend_url }}/health" 2>/dev/null || echo "000")
@@ -143,17 +173,19 @@ jobs:
           echo "❌ Timeout: backend no respondió en ~5 min"
           exit 1
 
-      # ── Resumen ───────────────────────────────────────────────────────────
+      # ── 8. Resumen ────────────────────────────────────────────────────────
       - name: Resumen deploy
         if: always()
         run: |
-          echo "## 🚀 Deploy QR Accreditation — ${{ steps.env.outputs.env }}" >> $GITHUB_STEP_SUMMARY
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
+          echo "## 🚀 Deploy QR Accreditation" >> $GITHUB_STEP_SUMMARY
           echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Entorno        | \`${{ steps.env.outputs.env }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Resource Group | \`${{ steps.env.outputs.rg }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend       | ${{ steps.deploy.outputs.frontend_url }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend App    | ${{ env.BACKEND_APP }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend App   | ${{ env.FRONTEND_APP }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit         | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Autor          | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Entorno        | \`${ENV}\` |"                                              >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | \`${{ vars.AZURE_RG }}\` |"                               >> $GITHUB_STEP_SUMMARY
+          echo "| Key Vault      | \`${{ vars.KEY_VAULT_NAME }}\` |"                         >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend       | ${{ steps.deploy.outputs.frontend_url }} |"              >> $GITHUB_STEP_SUMMARY
+          echo "| Backend App    | \`${{ env.BACKEND_APP }}\` |"                             >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend App   | \`${{ env.FRONTEND_APP }}\` |"                            >> $GITHUB_STEP_SUMMARY
+          echo "| Commit         | \`${{ github.sha }}\` |"                                  >> $GITHUB_STEP_SUMMARY
+          echo "| Autor          | ${{ github.actor }} |"                                    >> $GITHUB_STEP_SUMMARY

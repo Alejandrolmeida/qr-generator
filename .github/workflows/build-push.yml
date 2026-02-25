@@ -2,29 +2,21 @@ name: Build & Push — QR Accreditation
 
 # ─── Estrategia de imágenes Docker (4 capas) ─────────────────────────────────
 #
-#  qrgen/backend-base:latest
-#    └─ Python 3.12 + PyMuPDF + ReportLab + pandas + azure-sdk…
-#       Se reconstruye SOLO si backend/requirements.txt o backend/Dockerfile.base
-#       cambian. Build time: ~4-5 minutos (dependencias pesadas).
+#  qrgen/backend-base:latest   Python 3.12 + deps pesadas.  Build ~4-5 min.
+#  qrgen/backend-app:latest    FROM backend-base + código.  Build ~15 s.
+#  qrgen/frontend-base:latest  FROM chatapp/base + httpx.   Build ~20 s.
+#  qrgen/frontend-app:latest   FROM frontend-base + código. Build ~10 s.
 #
-#  qrgen/backend-app:latest
-#    └─ FROM backend-base + código (backend/app/)
-#       Se reconstruye en cada commit. Build time: ~15 segundos.
+# ─── Autenticación — OIDC puro, sin credenciales en GitHub ───────────────────
+#   El Service Principal necesita el rol AcrPush sobre acrazurebrainschat.
+#   Tras az login (OIDC) se ejecuta «az acr login --name» que obtiene
+#   un token temporal de 3 horas — ninguna contraseña toca GitHub.
 #
-#  qrgen/frontend-base:latest
-#    └─ FROM acrazurebrainschat.azurecr.io/chatapp/base + pip install httpx
-#       La imagen base del chatapp (chainlit, openai…) YA EXISTE en ACR.
-#       Se reconstruye SOLO si frontend/Dockerfile.base cambia.
-#       Build time: ~20 segundos (un solo pip install encima de la base cacheada).
+# ─── Secretos necesarios en GitHub (solo OIDC) ───────────────────────────────
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 #
-#  qrgen/frontend-app:latest
-#    └─ FROM frontend-base + código (frontend/app.py, agent/, client/)
-#       Se reconstruye en cada commit. Build time: ~10 segundos.
-#
-# ─── Secretos necesarios en GitHub ───────────────────────────────────────────
-#   ACR_USERNAME, ACR_PASSWORD    → credenciales de acrazurebrainschat.azurecr.io
-#
-# ─── Variables del workflow ───────────────────────────────────────────────────
+# ─── Variables de repositorio (Settings → Variables) ─────────────────────────
+#   ACR_NAME = acrazurebrainschat
 
 on:
   push:
@@ -43,10 +35,12 @@ on:
         options: ['false', 'true']
 
 permissions:
+  id-token: write   # OIDC — necesario para az login
   contents: read
 
 env:
   ACR: acrazurebrainschat.azurecr.io
+  ACR_NAME: ${{ vars.ACR_NAME || 'acrazurebrainschat' }}
 
   CHATAPP_BASE:    acrazurebrainschat.azurecr.io/chatapp/base:latest        # existente, no se toca
   BACKEND_BASE:    acrazurebrainschat.azurecr.io/qrgen/backend-base:latest
@@ -130,11 +124,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ${{ env.ACR }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login ACR (token OIDC — sin credenciales)
+        run: az acr login --name ${{ env.ACR_NAME }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -158,11 +156,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ${{ env.ACR }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login ACR (token OIDC)
+        run: az acr login --name ${{ env.ACR_NAME }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -191,11 +193,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ${{ env.ACR }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login ACR (token OIDC)
+        run: az acr login --name ${{ env.ACR_NAME }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -224,11 +230,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ${{ env.ACR }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login ACR (token OIDC)
+        run: az acr login --name ${{ env.ACR_NAME }}
 
       - uses: docker/setup-buildx-action@v3
 
