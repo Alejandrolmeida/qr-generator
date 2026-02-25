@@ -1,11 +1,11 @@
-name: Build & Push — QR Accreditation
+name: Build & Push — Lanyards AI Generator
 
 # ─── Estrategia de imágenes Docker (4 capas) ─────────────────────────────────
 #
-#  qrgen/backend-base:latest   Python 3.12 + deps pesadas.  Build ~4-5 min.
-#  qrgen/backend-app:latest    FROM backend-base + código.  Build ~15 s.
-#  qrgen/frontend-base:latest  FROM chatapp/base + httpx.   Build ~20 s.
-#  qrgen/frontend-app:latest   FROM frontend-base + código. Build ~10 s.
+#  lanyards/backend-base:latest   Python 3.12 + deps pesadas.  Build ~4-5 min.
+#  lanyards/backend-app:latest    FROM backend-base + código.  Build ~15 s.
+#  lanyards/frontend-base:latest  FROM chatapp/base + httpx.   Build ~20 s.
+#  lanyards/frontend-app:latest   FROM frontend-base + código. Build ~10 s.
 #
 # ─── Autenticación — OIDC puro, sin credenciales en GitHub ───────────────────
 #   El Service Principal necesita el rol AcrPush sobre acrazurebrainschat.
@@ -43,10 +43,10 @@ env:
   ACR_NAME: ${{ vars.ACR_NAME || 'acrazurebrainschat' }}
 
   CHATAPP_BASE:    acrazurebrainschat.azurecr.io/chatapp/base:latest        # existente, no se toca
-  BACKEND_BASE:    acrazurebrainschat.azurecr.io/qrgen/backend-base:latest
-  BACKEND_APP:     acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
-  FRONTEND_BASE:   acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
-  FRONTEND_APP:    acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
+  BACKEND_BASE:    acrazurebrainschat.azurecr.io/lanyards/backend-base:latest
+  BACKEND_APP:     acrazurebrainschat.azurecr.io/lanyards/backend-app:latest
+  FRONTEND_BASE:   acrazurebrainschat.azurecr.io/lanyards/frontend-base:latest
+  FRONTEND_APP:    acrazurebrainschat.azurecr.io/lanyards/frontend-app:latest
 
 # ─── Job 1: Detectar qué hay que reconstruir ─────────────────────────────────
 jobs:
@@ -263,7 +263,7 @@ jobs:
     steps:
       - name: Escribir resumen
         run: |
-          echo "## 🐳 Build QR Accreditation" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Build Lanyards AI Generator" >> $GITHUB_STEP_SUMMARY
           echo "| Imagen | Estado |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| backend-base  | ${{ needs.build-backend-base.result  == 'skipped' && '⏭️ reutilizada' || needs.build-backend-base.result  }} |" >> $GITHUB_STEP_SUMMARY

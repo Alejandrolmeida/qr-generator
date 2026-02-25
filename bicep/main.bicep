@@ -1,5 +1,5 @@
 // =============================================================================
-// QR Accreditation — Bicep principal
+// Lanyards AI Generator — Bicep principal
 // Orquesta todos los módulos de infraestructura.
 // =============================================================================
 
@@ -14,7 +14,7 @@ param location string = resourceGroup().location
 
 @description('Nombre corto del proyecto (sin espacios, max 8 chars)')
 @maxLength(8)
-param projectName string = 'qrgen'
+param projectName string = 'lanyards-aigen'
 
 @description('Tags comunes para todos los recursos')
 param tags object = {}

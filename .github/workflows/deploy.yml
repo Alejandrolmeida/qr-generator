@@ -1,4 +1,4 @@
-name: Deploy — QR Accreditation
+name: Deploy — Lanyards AI Generator
 
 # ─── Descripción ─────────────────────────────────────────────────────────────
 # Despliega la infraestructura (Bicep) y actualiza las Container Apps.
@@ -11,19 +11,19 @@ name: Deploy — QR Accreditation
 #   AZURE_SUBSCRIPTION_ID   → ID de la suscripción Sponsorship
 #
 # ─── Variables de repositorio (Settings → Variables, no Secrets) ─────────────
-#   AZURE_RG       → Resource Group compartido, e.g. rg-azurebrains-sponsorship
-#   KEY_VAULT_NAME → Nombre del AKV, e.g. kv-azurebrains
+#   AZURE_RG       → Resource Group del proyecto, e.g. rg-lanyards-aigen
+#   KEY_VAULT_NAME → Nombre del AKV, e.g. kv-lanyards-aigen
 #   ACR_NAME       → Nombre corto del ACR, e.g. acrazurebrainschat
 #
 # ─── Secretos que deben existir en el AKV ────────────────────────────────────
-#   qrgen-acr-username         → usuario del ACR (o token de acceso)
-#   qrgen-acr-password         → password/token del ACR
-#   qrgen-openai-api-key       → clave de Azure OpenAI
-#   qrgen-chainlit-auth-secret → secreto de autenticación Chainlit
+#   lanyards-acr-username         → usuario del ACR (o token de acceso)
+#   lanyards-acr-password         → password/token del ACR
+#   lanyards-openai-api-key       → clave de Azure OpenAI
+#   lanyards-chainlit-auth-secret → secreto de autenticación Chainlit
 
 on:
   workflow_run:
-    workflows: ["Build & Push — QR Accreditation"]
+    workflows: ["Build & Push — Lanyards AI Generator"]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -40,8 +40,8 @@ permissions:
   contents: read
 
 env:
-  BACKEND_APP:    acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
-  FRONTEND_APP:   acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
+  BACKEND_APP:    acrazurebrainschat.azurecr.io/lanyards/backend-app:latest
+  FRONTEND_APP:   acrazurebrainschat.azurecr.io/lanyards/frontend-app:latest
   AZURE_LOCATION: westeurope
 
 jobs:
@@ -82,10 +82,10 @@ jobs:
               --output tsv 2>/dev/null
           }
 
-          ACR_USR=$(get_secret "qrgen-acr-username")
-          ACR_PWD=$(get_secret "qrgen-acr-password")
-          OAI_KEY=$(get_secret "qrgen-openai-api-key")
-          CL_SEC=$(get_secret  "qrgen-chainlit-auth-secret")
+          ACR_USR=$(get_secret "lanyards-acr-username")
+          ACR_PWD=$(get_secret "lanyards-acr-password")
+          OAI_KEY=$(get_secret "lanyards-openai-api-key")
+          CL_SEC=$(get_secret  "lanyards-chainlit-auth-secret")
 
           # Enmascarar valores en los logs de GitHub Actions
           echo "::add-mask::$ACR_USR"
@@ -106,7 +106,7 @@ jobs:
           az group create \
             --name     "${{ vars.AZURE_RG }}" \
             --location "${{ env.AZURE_LOCATION }}" \
-            --tags     Environment="$ENV" Project=qr-accreditation ManagedBy=Bicep-IaC \
+            --tags     Environment="$ENV" Project=lanyards-ai-generator ManagedBy=Bicep-IaC \
             --output none
           echo "✅ Resource Group: ${{ vars.AZURE_RG }}"
 
@@ -178,7 +178,7 @@ jobs:
         if: always()
         run: |
           ENV="${{ github.event.inputs.environment || 'prod' }}"
-          echo "## 🚀 Deploy QR Accreditation" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deploy Lanyards AI Generator" >> $GITHUB_STEP_SUMMARY
           echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Entorno        | \`${ENV}\` |"                                              >> $GITHUB_STEP_SUMMARY

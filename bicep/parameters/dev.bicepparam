@@ -2,19 +2,19 @@ using 'main.bicep'
 
 param environment   = 'dev'
 param location      = 'westeurope'
-param projectName   = 'qrgen'
+param projectName   = 'lanyards-aigen'
 
 param tags = {
   Environment: 'Development'
   CostCenter: 'Engineering'
   Owner: 'alejandro@azurebrains.com'
-  Project: 'qr-accreditation'
+  Project: 'lanyards-ai-generator'
   ManagedBy: 'Bicep-IaC'
 }
 
 // Imágenes Docker — el pipeline sobreescribe estos valores con el digest del build
-param backendImage  = 'acrazurebrainschat.azurecr.io/qrgen/backend-app:latest'
-param frontendImage = 'acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest'
+param backendImage  = 'acrazurebrainschat.azurecr.io/lanyards/backend-app:latest'
+param frontendImage = 'acrazurebrainschat.azurecr.io/lanyards/frontend-app:latest'
 
 param acrLoginServer  = 'acrazurebrainschat.azurecr.io'
 param openAiEndpoint  = 'https://oai-azurebrains-blog.openai.azure.com/'
