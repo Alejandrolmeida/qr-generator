@@ -32,16 +32,17 @@ services:
       - azurite-data:/data
     command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --loose
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      test: ["CMD-SHELL", "node -e \"const c=require('net').createConnection(10000,'localhost',()=>process.exit(0));c.on('error',()=>process.exit(1));\""]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   # ── Backend FastAPI ─────────────────────────────────────────────────────────
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       args:
         BASE_IMAGE: acrazurebrainschat.azurecr.io/qrgen/backend-base:latest
     container_name: qrgen-backend
@@ -67,10 +68,11 @@ services:
       azurite:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   # ── Frontend Chainlit ───────────────────────────────────────────────────────
   frontend:

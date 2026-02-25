@@ -15,7 +15,8 @@ FROM ${BASE_IMAGE}
 WORKDIR /app
 
 # Solo el código — las dependencias ya están en la imagen base
-COPY app/ app/
+# (contexto = raíz del repo → backend/app/ y fonts/ son accesibles)
+COPY backend/app/ app/
 COPY fonts/ fonts/
 
 EXPOSE 8080

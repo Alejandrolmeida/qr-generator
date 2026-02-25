@@ -124,16 +124,27 @@ echo "✅ Secretos cargados en fichero temporal (fuera del repo)"
 echo ""
 
 # ── Lanzar docker compose ─────────────────────────────────────────────────────
-# Si no se pasan argumentos, se hace "up" por defecto.
+# Normalizar argumentos:
+#   - Sin argumentos            → up
+#   - Solo flags (ej: --build)  → up [flags]   (añadir subcomando up)
+#   - Subcomando explícito      → sin cambios   (up, down, logs…)
 COMPOSE_ARGS=("$@")
 if [ ${#COMPOSE_ARGS[@]} -eq 0 ]; then
   COMPOSE_ARGS=("up")
+elif [[ "${COMPOSE_ARGS[0]}" == -* ]]; then
+  COMPOSE_ARGS=("up" "${COMPOSE_ARGS[@]}")
 fi
 
 echo "🐳 docker compose ${COMPOSE_ARGS[*]}"
 echo "────────────────────────────────────────────────────────────────"
 echo ""
 
-docker compose \
-  --env-file "$TMPENV" \
-  "${COMPOSE_ARGS[@]}"
+# Las variables del fichero temporal se exportan al entorno del proceso actual
+# para que docker compose las reciba sin necesidad de --env-file (que en algunas
+# versiones del plugin solo afecta a la interpolación del propio compose.yml).
+set -a
+# shellcheck source=/dev/null
+source "$TMPENV"
+set +a
+
+docker compose "${COMPOSE_ARGS[@]}"
