@@ -1,0 +1,17 @@
+# QR Accreditation Frontend (Chainlit) — dependencias
+# Python 3.12
+
+# ── UI de chat ────────────────────────────────────────────────────────────────
+chainlit>=1.3.0
+
+# ── Azure OpenAI (conversación del agente) ────────────────────────────────────
+openai>=1.40.0
+
+# ── Azure Identity (Managed Identity) ────────────────────────────────────────
+azure-identity>=1.17.0
+
+# ── HTTP client hacia el backend API ─────────────────────────────────────────
+httpx>=0.27.0
+
+# ── Variables de entorno en local ─────────────────────────────────────────────
+python-dotenv>=1.1.0

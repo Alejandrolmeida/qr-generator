@@ -1,0 +1,29 @@
+# QR Accreditation Backend — dependencias
+# Python 3.12
+
+# ── API framework ──────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9       # file uploads
+
+# ── Configuración ─────────────────────────────────────────────────────────────
+pydantic-settings>=2.3.0
+python-dotenv>=1.1.0
+
+# ── Generación de PDFs (core heredado) ────────────────────────────────────────
+reportlab>=4.4.4
+PyMuPDF>=1.26.5
+svglib>=1.5.1
+qrcode[pil]>=8.2
+Pillow>=12.0.0
+
+# ── Lectura de Excel ──────────────────────────────────────────────────────────
+pandas>=2.3.0
+openpyxl>=3.1.5
+
+# ── Azure SDK ─────────────────────────────────────────────────────────────────
+azure-storage-blob>=12.20.0
+azure-identity>=1.17.0
+
+# ── Azure OpenAI (análisis de plantillas con GPT-4o Vision) ───────────────────
+openai>=1.40.0
