@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup-keyvault.sh — Configuración inicial del Azure Key Vault
+# setup-keyvault.sh — Configuración inicial de Azure Key Vault
 #
-# Ejecutar UNA VEZ antes del primer deploy o cuando roten los secretos.
-# Requiere: az login, permisos Key Vault Secrets Officer sobre el AKV.
+# Almacena TODOS los secretos y parámetros en AKV.
+# AKV es la única fuente de verdad: ni .env, ni GitHub Secrets de negocio,
+# ni variables de entorno manuales en ningún momento.
+#
+# Prerrequisitos:
+#   • az login con permisos Key Vault Secrets Officer sobre el AKV
 #
 # Uso:
 #   chmod +x scripts/setup-keyvault.sh
 #   ./scripts/setup-keyvault.sh [dev|prod]
-#
-# Ejemplo:
-#   ./scripts/setup-keyvault.sh dev
 # =============================================================================
 
 set -euo pipefail
 
 ENVIRONMENT="${1:-dev}"
 PROJECT_NAME="lanyards-aigen"
-KV_NAME="${PROJECT_NAME}-${ENVIRONMENT}"
-# Respetar límite de 24 chars de AKV
-KV_NAME="kv-${KV_NAME:0:21}"
+KV_NAME="kv-${PROJECT_NAME:0:18}-${ENVIRONMENT}"
+KV_NAME="${KV_NAME:0:24}"   # límite AKV
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -36,103 +36,137 @@ if ! az account show >/dev/null 2>&1; then
   exit 1
 fi
 
-# ── Verificar que el AKV existe ───────────────────────────────────────────────
+# ── Verificar / crear el AKV ──────────────────────────────────────────────────
 if ! az keyvault show --name "$KV_NAME" >/dev/null 2>&1; then
-  echo "⚠️  El AKV '$KV_NAME' no existe."
-  echo "   Ejecuta primero el workflow deploy.yml o crea el AKV manualmente:"
-  echo "   az keyvault create --name '$KV_NAME' --resource-group '<RG>' \\"
-  echo "     --location westeurope --enable-rbac-authorization true"
-  exit 1
-fi
-
-echo "✅ Key Vault encontrado: $KV_NAME"
-echo ""
-
-# ─── SECRETOS DE NEGOCIO ──────────────────────────────────────────────────────
-#
-# Estos son los 2 únicos secretos que deben almacenarse en AKV.
-# Las Container Apps los leen en runtime via Managed Identity (UAMI).
-# El pipeline de GitHub los sincroniza automáticamente desde GitHub Secrets.
-#
-# Puedes usarlo también para rotar manualmente sin re-deployar.
-
-# ── 1. Azure OpenAI API Key ───────────────────────────────────────────────────
-echo "─── [1/2] lanyards-openai-api-key ──────────────────────────────"
-EXISTING=$(az keyvault secret show \
-  --vault-name "$KV_NAME" \
-  --name "lanyards-openai-api-key" \
-  --query "value" -o tsv 2>/dev/null || echo "")
-
-if [ -n "$EXISTING" ]; then
-  read -rp "  ⚠️  Ya existe. ¿Sobreescribir? [s/N]: " CONFIRM
-  [[ ! "$CONFIRM" =~ ^[sS]$ ]] && echo "  ↳ Omitido" || {
-    read -rsp "  Nuevo valor de AZURE_OPENAI_API_KEY: " OAI_KEY; echo ""
-    az keyvault secret set \
-      --vault-name "$KV_NAME" \
-      --name "lanyards-openai-api-key" \
-      --value "$OAI_KEY" --output none
-    echo "  ✅ Actualizado"
-  }
-else
-  read -rsp "  Valor de AZURE_OPENAI_API_KEY: " OAI_KEY; echo ""
-  az keyvault secret set \
-    --vault-name "$KV_NAME" \
-    --name "lanyards-openai-api-key" \
-    --value "$OAI_KEY" --output none
-  echo "  ✅ Guardado"
-fi
-
-# ── 2. Chainlit Auth Secret ───────────────────────────────────────────────────
-echo ""
-echo "─── [2/2] lanyards-chainlit-auth-secret ────────────────────────"
-EXISTING=$(az keyvault secret show \
-  --vault-name "$KV_NAME" \
-  --name "lanyards-chainlit-auth-secret" \
-  --query "value" -o tsv 2>/dev/null || echo "")
-
-if [ -n "$EXISTING" ]; then
-  read -rp "  ⚠️  Ya existe. ¿Sobreescribir? [s/N]: " CONFIRM
-  [[ ! "$CONFIRM" =~ ^[sS]$ ]] && echo "  ↳ Omitido" || {
-    # Generar automáticamente si el usuario no introduce nada
-    echo "  (deja en blanco para autogenerar con openssl)"
-    read -rsp "  Nuevo CHAINLIT_AUTH_SECRET: " CL_SEC; echo ""
-    if [ -z "$CL_SEC" ]; then
-      CL_SEC=$(openssl rand -hex 32)
-      echo "  🎲 Autogenerado: ${CL_SEC:0:8}…"
-    fi
-    az keyvault secret set \
-      --vault-name "$KV_NAME" \
-      --name "lanyards-chainlit-auth-secret" \
-      --value "$CL_SEC" --output none
-    echo "  ✅ Actualizado"
-  }
-else
-  echo "  (deja en blanco para autogenerar con openssl)"
-  read -rsp "  Valor de CHAINLIT_AUTH_SECRET: " CL_SEC; echo ""
-  if [ -z "$CL_SEC" ]; then
-    CL_SEC=$(openssl rand -hex 32)
-    echo "  🎲 Autogenerado: ${CL_SEC:0:8}…"
+  echo "⚠️  El AKV '$KV_NAME' no existe todavía."
+  echo ""
+  read -rp "  ¿Crear el AKV ahora? (necesitas el Resource Group) [s/N]: " CREATE_KV
+  if [[ "$CREATE_KV" =~ ^[sS]$ ]]; then
+    read -rp "  Resource Group: " AKV_RG
+    read -rp "  Región [westeurope]: " AKV_LOCATION
+    AKV_LOCATION="${AKV_LOCATION:-westeurope}"
+    az keyvault create \
+      --name "$KV_NAME" \
+      --resource-group "$AKV_RG" \
+      --location "$AKV_LOCATION" \
+      --enable-rbac-authorization true \
+      --retention-days 7 \
+      --output none
+    echo "  ✅ Key Vault creado: $KV_NAME"
+  else
+    echo "  Ejecuta primero el workflow deploy.yml o crea el AKV manualmente."
+    exit 1
   fi
-  az keyvault secret set \
-    --vault-name "$KV_NAME" \
-    --name "lanyards-chainlit-auth-secret" \
-    --value "$CL_SEC" --output none
-  echo "  ✅ Guardado"
 fi
 
-# ── Verificación final ────────────────────────────────────────────────────────
+echo "✅ Key Vault: $KV_NAME"
 echo ""
-echo "────────────────────────────────────────────────────────────────"
-echo "✅ Secretos en AKV '$KV_NAME':"
+
+# ── Función para guardar/actualizar un secreto ────────────────────────────────
+# Nunca muestra el valor en pantalla (read -s) ni lo imprime en ningún log.
+set_secret() {
+  local NAME="$1"
+  local PROMPT="$2"
+  local DEFAULT="${3:-}"      # valor por defecto visible (no sensible)
+  local AUTO_GEN="${4:-}"     # si "auto", genera con openssl si queda vacío
+
+  EXISTING=$(az keyvault secret show \
+    --vault-name "$KV_NAME" --name "$NAME" \
+    --query "value" -o tsv 2>/dev/null || echo "")
+
+  if [ -n "$EXISTING" ]; then
+    read -rp "  ⚠️  '$NAME' ya existe. ¿Sobreescribir? [s/N]: " CONFIRM
+    [[ ! "$CONFIRM" =~ ^[sS]$ ]] && { echo "  ↳ Omitido"; return; }
+  fi
+
+  if [ -n "$DEFAULT" ]; then
+    read -rp "  $PROMPT [${DEFAULT}]: " VALUE
+    VALUE="${VALUE:-$DEFAULT}"
+  elif [ "$AUTO_GEN" = "auto" ]; then
+    echo "  (deja en blanco para autogenerar con openssl)"
+    read -rsp "  $PROMPT: " VALUE; echo ""
+    if [ -z "$VALUE" ]; then
+      VALUE=$(openssl rand -hex 32)
+      echo "  🎲 Autogenerado"
+    fi
+  else
+    read -rsp "  $PROMPT: " VALUE; echo ""
+  fi
+
+  if [ -z "$VALUE" ]; then
+    echo "  ❌ Valor vacío — secreto no guardado."
+    return
+  fi
+
+  az keyvault secret set \
+    --vault-name "$KV_NAME" \
+    --name "$NAME" \
+    --value "$VALUE" \
+    --output none
+  echo "  ✅ $NAME"
+}
+
+# =============================================================================
+# AZURE OPENAI
+# =============================================================================
+echo "─── Azure OpenAI ────────────────────────────────────────────────"
+echo ""
+echo "  El endpoint y la API key se leen por dev-up.sh en local."
+echo "  En producción (Container Apps) la auth es keyless via UAMI."
+echo ""
+
+set_secret \
+  "lanyards-openai-endpoint" \
+  "Endpoint (ej: https://mi-recurso.openai.azure.com/)"
+
+echo ""
+
+set_secret \
+  "lanyards-openai-api-key" \
+  "API Key  (solo para desarrollo local — producción usa UAMI keyless)"
+
+echo ""
+
+set_secret \
+  "lanyards-openai-deployment" \
+  "Nombre del deployment GPT-4o" \
+  "gpt-4o"
+
+echo ""
+
+set_secret \
+  "lanyards-openai-api-version" \
+  "API version" \
+  "2024-02-15-preview"
+
+echo ""
+
+# =============================================================================
+# CHAINLIT
+# =============================================================================
+echo "─── Chainlit ────────────────────────────────────────────────────"
+echo ""
+
+set_secret \
+  "lanyards-chainlit-auth-secret" \
+  "CHAINLIT_AUTH_SECRET" \
+  "" \
+  "auto"
+
+echo ""
+
+# ── Resumen ───────────────────────────────────────────────────────────────────
+echo "════════════════════════════════════════════════════════════════"
+echo "✅ Secretos en '$KV_NAME':"
+echo ""
 az keyvault secret list \
   --vault-name "$KV_NAME" \
-  --query "[].{Nombre:name, Actualizado:attributes.updated}" \
+  --query "sort_by([], &name)[].{Secreto:name, Actualizado:attributes.updated}" \
   -o table
 
 echo ""
-echo "ℹ️  Recuerda también actualizar los GitHub Secrets con los mismos valores:"
-echo "   AZURE_OPENAI_API_KEY"
-echo "   CHAINLIT_AUTH_SECRET"
+echo "  Levantar entorno de desarrollo:"
+echo "    ./scripts/dev-up.sh"
 echo ""
-echo "   Los GitHub Secrets se sincronizan automáticamente a AKV en cada deploy."
+echo "  ⚠️  NUNCA copies estos valores a ficheros .env del repositorio."
 echo ""

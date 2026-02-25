@@ -1,12 +1,16 @@
 # =============================================================================
 # QR Accreditation — Docker Compose (desarrollo local)
 # =============================================================================
-# Levanta backend + frontend con hot-reload y un emulador local de Azurite
-# en lugar de Azure Blob Storage real.
+# IMPORTANTE: NO uses este fichero directamente. Usa el script:
 #
-# Uso:
-#   cp .env.example .env   # ajusta tus claves
-#   docker compose up --build
+#   ./scripts/dev-up.sh               ← levanta el stack
+#   ./scripts/dev-up.sh --build       ← rebuild + levanta
+#   ./scripts/dev-up.sh -d            ← en segundo plano
+#   ./scripts/dev-up.sh down          ← apaga el stack
+#
+# El script carga los secretos desde Azure Key Vault y los inyecta
+# en un fichero temporal /tmp/*.env que se borra al finalizar.
+# Nunca se escribe ninguna credencial en el directorio del repositorio.
 #
 # URLs:
 #   Frontend (Chainlit) → http://localhost:8000
