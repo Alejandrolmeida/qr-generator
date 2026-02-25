@@ -134,6 +134,44 @@ jobs:
       - name: Instalar Bicep
         run: az bicep install
 
+      # ── 4b. Pre-aprovisionar UAMI y asignar AcrPull ───────────────────────
+      #   Los Container Apps necesitan AcrPull durante su creación (Bicep step 6).
+      #   Como el ACR es externo al RG, el rol debe existir ANTES del deploy.
+      #   Bicep no falla si la UAMI ya existe (idempotente).
+      - name: Pre-crear UAMI y asignar AcrPull
+        run: |
+          ENV="${{ github.event.inputs.environment || 'prod' }}"
+          UAMI_NAME="id-${{ env.PROJECT_NAME }}-${ENV}"
+
+          # Crear UAMI si no existe (Bicep la creará idempotente también)
+          az identity create \
+            --name           "$UAMI_NAME" \
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --location       "${{ env.AZURE_LOCATION }}" \
+            --output none 2>/dev/null || true
+
+          # Esperar propagación AAD (principal ID puede tardar unos segundos)
+          for i in $(seq 1 10); do
+            UAMI_PID=$(az identity show --name "$UAMI_NAME" \
+              --resource-group "${{ vars.AZURE_RG }}" \
+              --query principalId -o tsv 2>/dev/null || echo "")
+            [[ -n "$UAMI_PID" ]] && break
+            echo "  Esperando principalId UAMI... ($i/10)"
+            sleep 6
+          done
+          echo "UAMI_PID=$UAMI_PID" >> $GITHUB_ENV
+
+          # Asignar AcrPull (idempotente — no falla si ya existe)
+          ACR_ID=$(az acr show --name "${{ vars.ACR_NAME }}" --query id -o tsv)
+          az role assignment create \
+            --assignee-object-id    "$UAMI_PID" \
+            --assignee-principal-type ServicePrincipal \
+            --role "AcrPull" \
+            --scope "$ACR_ID" \
+            --output none 2>/dev/null || echo "ℹ️ AcrPull ya asignado"
+
+          echo "✅ UAMI: $UAMI_NAME | AcrPull: OK"
+
       # ── 5. What-if (solo informativo) ────────────────────────────────────
       - name: Validar Bicep (what-if)
         continue-on-error: true   # informativo — no bloquea el deploy
