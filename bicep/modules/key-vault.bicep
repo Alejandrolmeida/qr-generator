@@ -13,14 +13,17 @@ param prefix string
 param location string
 param tags object
 
+@description('Nombre exacto del KV. Si se indica sobreescribe el calculado (útil para reconciliar recursos ya existentes)')
+param kvNameOverride string = ''
+
 @description('Principal IDs que necesitan "Key Vault Secrets User" (solo lectura)')
 param secretsUserPrincipalIds array = []
 
 @description('Principal IDs que necesitan "Key Vault Secrets Officer" (lectura + escritura)')
 param secretsOfficerPrincipalIds array = []
 
-// KV name: max 24 chars, solo alfanumérico y guiones, debe empezar por letra
-var kvName = take('kv-${prefix}', 24)
+// KV name: max 24 chars, solo alfanumerico y guiones, debe empezar por letra
+var kvName = empty(kvNameOverride) ? take('kv-${prefix}', 24) : kvNameOverride
 
 // ── Key Vault ─────────────────────────────────────────────────────────────────
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {

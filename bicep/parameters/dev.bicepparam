@@ -1,7 +1,7 @@
-using 'main.bicep'
+using '../main.bicep'
 
 param environment   = 'dev'
-param location      = 'westeurope'
+param location      = 'spaincentral'
 param projectName   = 'lanyards-aigen'
 
 param tags = {
@@ -17,8 +17,9 @@ param backendImage  = 'acrazurebrainschat.azurecr.io/lanyards/backend-app:latest
 param frontendImage = 'acrazurebrainschat.azurecr.io/lanyards/frontend-app:latest'
 
 param acrLoginServer   = 'acrazurebrainschat.azurecr.io'
-param openAiEndpoint   = 'https://oai-azurebrains-blog.openai.azure.com/'
 param openAiDeployment = 'gpt-4o'
+// openAiEndpoint NO es parámetro: lo genera el módulo openai.bicep y se
+// almacena automáticamente en AKV por setup-keyvault.sh post-deploy.
 
 // ─── NO hay @secure() en este fichero ────────────────────────────────────────
 // Todos los secretos (openAiApiKey, chainlitAuthSecret) residen en AKV.

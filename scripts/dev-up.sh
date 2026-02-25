@@ -24,10 +24,9 @@ set -euo pipefail
 
 PROJECT_NAME="lanyards-aigen"
 ENVIRONMENT="${LANYARDS_ENV:-dev}"
-KV_NAME="${AKV_NAME:-kv-${PROJECT_NAME:0:18}-${ENVIRONMENT}}"
-
-# Truncar al límite de 24 chars de AKV
-KV_NAME="${KV_NAME:0:24}"
+# El AKV se desplegó sin sufijo de entorno; se puede sobreescribir con AKV_NAME
+KV_NAME="${AKV_NAME:-kv-${PROJECT_NAME}}"
+KV_NAME="${KV_NAME:0:24}"  # límite de AKV = 24 chars
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -105,7 +104,7 @@ echo ""
 akv_get "lanyards-openai-endpoint"    "AZURE_OPENAI_ENDPOINT"
 akv_get "lanyards-openai-api-key"     "AZURE_OPENAI_API_KEY"
 akv_get "lanyards-openai-deployment"  "AZURE_OPENAI_DEPLOYMENT_GPT4O"  "gpt-4o"
-akv_get "lanyards-openai-api-version" "AZURE_OPENAI_API_VERSION"       "2024-02-15-preview"
+akv_get "lanyards-openai-api-version" "AZURE_OPENAI_API_VERSION"       "2024-08-01-preview"
 
 # ── Chainlit ──────────────────────────────────────────────────────────────────
 akv_get "lanyards-chainlit-auth-secret" "CHAINLIT_AUTH_SECRET"
@@ -118,7 +117,6 @@ CORS_ORIGINS=["http://localhost:8000"]
 FONTS_FOLDER=/app/fonts
 OUTPUT_FOLDER=/tmp/qr-output
 BACKEND_URL=http://backend:8080
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
 EOF
 
 echo ""

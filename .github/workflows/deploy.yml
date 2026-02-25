@@ -203,19 +203,9 @@ jobs:
 
           echo "✅ AcrPull asignado a UAMI sobre ACR"
 
-      # ── 8. Asignar Cognitive Services OpenAI User a la UAMI ───────────────────
-      #   Permite que backend y frontend accedan a Azure OpenAI SIN API key.
-      #   OPENAI_RESOURCE_ID es un GitHub Variable (no sensible).
-      - name: Asignar Cognitive Services OpenAI User a UAMI
-        run: |
-          az role assignment create \
-            --assignee-object-id "${{ steps.deploy.outputs.uami_principal_id }}" \
-            --assignee-principal-type ServicePrincipal \
-            --role "Cognitive Services OpenAI User" \
-            --scope "${{ vars.OPENAI_RESOURCE_ID }}" \
-            --output none 2>/dev/null || echo "ℹ️ Cognitive Services OpenAI User ya asignado"
-
-          echo "✅ Cognitive Services OpenAI User asignado a UAMI"
+      # ── 8. Cognitive Services OpenAI User ────────────────────────────────────
+      #   El rol se asigna dentro de bicep/modules/openai.bicep en el step 4.
+      #   No se necesita ninguna acción adicional aquí.
 
       # ── 9. Health check (espera cold start de Container Apps) ───────────────
       - name: Health check backend

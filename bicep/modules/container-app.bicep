@@ -14,7 +14,7 @@ param location string
 param tags     object
 
 // ── Monitoring ────────────────────────────────────────────────────────────────
-param logAnalyticsWorkspaceId         string
+
 param logAnalyticsWorkspaceCustomerId string
 @secure()
 param logAnalyticsWorkspaceKey string
@@ -101,18 +101,18 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
           }
           env: [
             // Storage via Managed Identity — sin connection string
-            { name: 'AZURE_STORAGE_ACCOUNT_NAME';    value:     storageAccountName }
-            { name: 'AZURE_CLIENT_ID';               value:     uamiClientId }
+            { name: 'AZURE_STORAGE_ACCOUNT_NAME',    value: storageAccountName }
+            { name: 'AZURE_CLIENT_ID',               value: uamiClientId }
             // Azure OpenAI — keyless via DefaultAzureCredential (UAMI)
-            { name: 'AZURE_OPENAI_ENDPOINT';         value: openAiEndpoint }
-            { name: 'AZURE_OPENAI_DEPLOYMENT_GPT4O'; value: openAiDeployment }
-            { name: 'FONTS_FOLDER';                  value:     '/app/fonts' }
-            { name: 'OUTPUT_FOLDER';                 value:     '/tmp/qr-output' }
+            { name: 'AZURE_OPENAI_ENDPOINT',         value: openAiEndpoint }
+            { name: 'AZURE_OPENAI_DEPLOYMENT_GPT4O', value: openAiDeployment }
+            { name: 'FONTS_FOLDER',                  value: '/app/fonts' }
+            { name: 'OUTPUT_FOLDER',                 value: '/tmp/qr-output' }
           ]
           probes: [
             {
               type: 'Liveness'
-              httpGet: { path: '/health'; port: 8080 }
+              httpGet: { path: '/health', port: 8080 }
               initialDelaySeconds: 10
               periodSeconds: 30
             }
@@ -178,13 +178,13 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
             memory: '0.5Gi'
           }
           env: [
-            { name: 'BACKEND_URL';              value:     'https://${backend.properties.configuration.ingress.fqdn}' }
+            { name: 'BACKEND_URL',              value: 'https://${backend.properties.configuration.ingress.fqdn}' }
             // Azure OpenAI — keyless via DefaultAzureCredential (UAMI)
-            { name: 'AZURE_OPENAI_ENDPOINT';    value:     openAiEndpoint }
-            { name: 'AZURE_OPENAI_DEPLOYMENT';  value:     openAiDeployment }
-            { name: 'AZURE_OPENAI_API_VERSION'; value:     '2024-02-15-preview' }
-            { name: 'AZURE_CLIENT_ID';          value:     uamiClientId }
-            { name: 'CHAINLIT_AUTH_SECRET';     secretRef: 'chainlit-auth-secret' }
+            { name: 'AZURE_OPENAI_ENDPOINT',    value: openAiEndpoint }
+            { name: 'AZURE_OPENAI_DEPLOYMENT',  value: openAiDeployment }
+            { name: 'AZURE_OPENAI_API_VERSION', value: '2024-08-01-preview' }
+            { name: 'AZURE_CLIENT_ID',          value: uamiClientId }
+            { name: 'CHAINLIT_AUTH_SECRET',     secretRef: 'chainlit-auth-secret' }
           ]
         }
       ]

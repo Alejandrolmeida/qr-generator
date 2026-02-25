@@ -18,7 +18,8 @@ set -euo pipefail
 
 ENVIRONMENT="${1:-dev}"
 PROJECT_NAME="lanyards-aigen"
-KV_NAME="kv-${PROJECT_NAME:0:18}-${ENVIRONMENT}"
+# El AKV se desplegó sin sufijo de entorno; se puede sobreescribir con AKV_NAME
+KV_NAME="${AKV_NAME:-kv-${PROJECT_NAME}}"
 KV_NAME="${KV_NAME:0:24}"   # límite AKV
 
 echo ""
@@ -107,37 +108,68 @@ set_secret() {
 }
 
 # =============================================================================
-# AZURE OPENAI
+# AZURE OPENAI  (endpoint y deployment se auto-detectan del recurso propio)
 # =============================================================================
 echo "─── Azure OpenAI ────────────────────────────────────────────────"
 echo ""
-echo "  El endpoint y la API key se leen por dev-up.sh en local."
-echo "  En producción (Container Apps) la auth es keyless via UAMI."
-echo ""
 
-set_secret \
-  "lanyards-openai-endpoint" \
-  "Endpoint (ej: https://mi-recurso.openai.azure.com/)"
+# El recurso lo crea main.bicep: oai-lanyards-aigen-<env>
+OAI_ACCOUNT="oai-${PROJECT_NAME}-${ENVIRONMENT}"
 
-echo ""
+echo "  Buscando recurso Azure OpenAI: $OAI_ACCOUNT"
+OAI_INFO=$(az cognitiveservices account show \
+  --name "$OAI_ACCOUNT" \
+  --resource-group "rg-${PROJECT_NAME}" \
+  --query "{endpoint:properties.endpoint, id:id}" \
+  -o json 2>/dev/null || echo "{}")
 
-set_secret \
-  "lanyards-openai-api-key" \
-  "API Key  (solo para desarrollo local — producción usa UAMI keyless)"
+OAI_ENDPOINT=$(echo "$OAI_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('endpoint',''))" 2>/dev/null)
+OAI_ID=$(echo "$OAI_INFO"       | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))"       2>/dev/null)
 
-echo ""
+if [ -z "$OAI_ENDPOINT" ]; then
+  echo ""
+  echo "  ⚠️  Recurso '$OAI_ACCOUNT' no encontrado."
+  echo "     Despliega primero la infraestructura:"
+  echo "     az deployment group create \\"
+  echo "       --resource-group rg-${PROJECT_NAME} \\"
+  echo "       --template-file bicep/main.bicep \\"
+  echo "       --parameters bicep/parameters/${ENVIRONMENT}.bicepparam"
+  echo ""
+  read -rp "  ¿Introducir endpoint manualmente? [s/N]: " MANUAL
+  if [[ "$MANUAL" =~ ^[sS]$ ]]; then
+    read -rp "  Endpoint: " OAI_ENDPOINT
+  else
+    echo "  ↳ Omitiendo secretos de OpenAI — ejecuta este script de nuevo tras el deploy."
+    OAI_SKIP=true
+  fi
+fi
 
-set_secret \
-  "lanyards-openai-deployment" \
-  "Nombre del deployment GPT-4o" \
-  "gpt-4o"
+if [ "${OAI_SKIP:-false}" = "false" ]; then
+  # Guardar endpoint (no es secreto pero lo centralizamos en AKV para dev-up.sh)
+  az keyvault secret set \
+    --vault-name "$KV_NAME" \
+    --name "lanyards-openai-endpoint" \
+    --value "$OAI_ENDPOINT" \
+    --output none
+  echo "  ✅ lanyards-openai-endpoint  ← $OAI_ENDPOINT"
 
-echo ""
+  echo ""
+  set_secret \
+    "lanyards-openai-api-key" \
+    "API Key  (solo para desarrollo local — producción usa UAMI keyless)"
 
-set_secret \
-  "lanyards-openai-api-version" \
-  "API version" \
-  "2024-02-15-preview"
+  echo ""
+  set_secret \
+    "lanyards-openai-deployment" \
+    "Nombre del deployment GPT-4o" \
+    "gpt-4o"
+
+  echo ""
+  set_secret \
+    "lanyards-openai-api-version" \
+    "API version" \
+    "2024-08-01-preview"
+fi
 
 echo ""
 
