@@ -44,7 +44,12 @@ param openAiDeployment string
 // ── Key Vault — URI base (termina en /) ──────────────────────────────────────
 @description('URI del AKV, p.ej. https://kv-lanyards-aigen-dev.vault.azure.net/')
 param keyVaultUri string
+// ── Autenticación Entra ID (OAuth) ───────────────────────────────────────────────
+@description('URL pública del frontend (p.ej. https://lanyard.azurebrains.com)')
+param chainlitUrl string = ''
 
+@description('Lista de emails separados por coma que pueden acceder. Vacío = cualquier usuario del tenant.')
+param allowedEmails string = ''
 // ── Container Apps Environment ────────────────────────────────────────────────
 // ── Container Apps Environment ────────────────────────────────────────────────
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -166,6 +171,22 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/lanyards-chainlit-auth-secret'
           identity:    uamiId
         }
+        // OAuth Entra ID — los 3 componentes desde AKV
+        {
+          name:        'oauth-client-id'
+          keyVaultUrl: '${keyVaultUri}secrets/lanyards-oauth-client-id'
+          identity:    uamiId
+        }
+        {
+          name:        'oauth-client-secret'
+          keyVaultUrl: '${keyVaultUri}secrets/lanyards-oauth-client-secret'
+          identity:    uamiId
+        }
+        {
+          name:        'oauth-tenant-id'
+          keyVaultUrl: '${keyVaultUri}secrets/lanyards-oauth-tenant-id'
+          identity:    uamiId
+        }
       ]
     }
     template: {
@@ -185,6 +206,13 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_OPENAI_API_VERSION', value: '2024-08-01-preview' }
             { name: 'AZURE_CLIENT_ID',          value: uamiClientId }
             { name: 'CHAINLIT_AUTH_SECRET',     secretRef: 'chainlit-auth-secret' }
+            // OAuth Entra ID — activado cuando chainlitUrl está configurado
+            { name: 'OAUTH_AZURE_AD_CLIENT_ID',             secretRef: 'oauth-client-id' }
+            { name: 'OAUTH_AZURE_AD_CLIENT_SECRET',         secretRef: 'oauth-client-secret' }
+            { name: 'OAUTH_AZURE_AD_TENANT_ID',             secretRef: 'oauth-tenant-id' }
+            { name: 'OAUTH_AZURE_AD_ENABLE_SINGLE_TENANT',  value: 'true' }
+            { name: 'CHAINLIT_URL',                         value: chainlitUrl }
+            { name: 'ALLOWED_EMAILS',                       value: allowedEmails }
           ]
         }
       ]

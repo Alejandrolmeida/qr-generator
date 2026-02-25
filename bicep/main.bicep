@@ -50,6 +50,12 @@ param openAiModelVersion string = '2024-11-20'
 @description('Capacidad TPM del deployment en miles')
 param openAiCapacityKtpm int = 10
 
+@description('URL pública del frontend, p.ej. https://lanyard.azurebrains.com. Necesario para OAuth redirect.')
+param chainlitUrl string = ''
+
+@description('Emails autorizados separados por coma. Vacío = cualquier usuario del tenant.')
+param allowedEmails string = ''
+
 // ── Variables ─────────────────────────────────────────────────────────────────
 var prefix  = '${projectName}-${environment}'
 var allTags = union(tags, {
@@ -150,6 +156,8 @@ module containerApps 'modules/container-app.bicep' = {
     openAiEndpoint:                  openai.outputs.endpoint
     openAiDeployment:                openai.outputs.deploymentName
     keyVaultUri:                     keyVault.outputs.keyVaultUri
+    chainlitUrl:                     chainlitUrl
+    allowedEmails:                   allowedEmails
   }
 }
 

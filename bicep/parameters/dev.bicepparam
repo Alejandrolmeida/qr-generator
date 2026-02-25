@@ -28,4 +28,8 @@ param openAiDeployment = 'gpt-4o'
 // ─── NO hay @secure() en este fichero ────────────────────────────────────────
 // Todos los secretos (openAiApiKey, chainlitAuthSecret) residen en AKV.
 // Las Container Apps los leen en runtime vía Managed Identity (UAMI).
+
+// OAuth Entra ID — solo el email del propietario puede acceder
+param chainlitUrl   = 'https://lanyard.azurebrains.com'
+param allowedEmails = 'alejandro.almeida.garcia@gmail.com'
 // GitHub solo almacena AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID.
