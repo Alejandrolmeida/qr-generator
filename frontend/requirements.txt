@@ -1,0 +1,10 @@
+# QR Accreditation Frontend (Chainlit) — dependencias adicionales
+# Python 3.12
+#
+# NOTA: la imagen base (acrazurebrainschat.azurecr.io/qrgen/frontend-base)
+# hereda de acrazurebrainschat.azurecr.io/chatapp/base que ya incluye:
+#   chainlit, openai, azure-identity, azure-cosmos, requests, python-dotenv…
+# Este fichero solo declara lo que se añade ENCIMA de esa base.
+
+# ── HTTP client async hacia el backend API (no está en chatapp/base) ─────────
+httpx>=0.27.0

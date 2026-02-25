@@ -1,0 +1,24 @@
+# ─── Imagen base frontend: chatapp/base + httpx ──────────────────────────────
+#
+# Hereda de la imagen base del proyecto chatapp que ya está en ACR:
+#   acrazurebrainschat.azurecr.io/chatapp/base:latest
+# Esa imagen ya incluye: chainlit, openai, azure-identity, python-dotenv, etc.
+# Solo añadimos lo que falta: httpx (cliente HTTP async hacia el backend API).
+#
+# Se reconstruye SOLO cuando cambia frontend/Dockerfile.base (muy raro).
+# El CI/CD la sube a ACR como:
+#   acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
+#
+# Para rebuild manual:
+#   docker build -f frontend/Dockerfile.base -t acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest frontend/
+#   docker push acrazurebrainschat.azurecr.io/qrgen/frontend-base:latest
+
+FROM acrazurebrainschat.azurecr.io/chatapp/base:latest
+
+WORKDIR /app
+
+# Solo instalamos httpx — el resto (chainlit, openai, azure-identity…) ya está en la imagen base
+COPY requirements.txt .
+RUN pip install --no-cache-dir httpx>=0.27.0
+
+# Imagen lista — el código se añade en la imagen app (Dockerfile)

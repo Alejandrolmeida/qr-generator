@@ -1,0 +1,28 @@
+[project]
+name = "QR Accreditation Agent"
+
+[features]
+# Habilitar subida de ficheros en el chat
+spontaneous_file_upload = { enabled = true, accept = ["application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"], max_size_mb = 20, max_files = 5 }
+# Mostrar botón de nueva conversación
+multi_modal = true
+
+[UI]
+name = "Acreditaciones IA"
+# favicon y logo se sirven desde public/
+favicon = "/public/favicon.png"
+default_collapse_content = false
+# Ocultar el watermark de Chainlit
+hide_cot = false
+
+[UI.theme]
+default = "light"
+
+    [UI.theme.light]
+    background = "#FAFAFA"
+    paper = "#FFFFFF"
+
+        [UI.theme.light.primary]
+        main = "#005BAB"
+        dark = "#003F7A"
+        light = "#4D8AC6"

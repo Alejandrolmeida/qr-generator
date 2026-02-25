@@ -1,0 +1,159 @@
+name: Deploy — QR Accreditation
+
+# ─── Descripción ─────────────────────────────────────────────────────────────
+# Despliega la infraestructura (Bicep) y actualiza las Container Apps
+# con las imágenes recién publicadas en ACR.
+#
+# Se ejecuta automáticamente tras un build exitoso en main,
+# o manualmente para forzar un re-deploy.
+#
+# ─── Secretos necesarios en GitHub ───────────────────────────────────────────
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  (OIDC)
+#   ACR_USERNAME, ACR_PASSWORD
+#   AZURE_OPENAI_API_KEY
+#   CHAINLIT_AUTH_SECRET
+
+on:
+  workflow_run:
+    workflows: ["Build & Push — QR Accreditation"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno a desplegar'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+env:
+  ACR:              acrazurebrainschat.azurecr.io
+  BACKEND_APP:      acrazurebrainschat.azurecr.io/qrgen/backend-app:latest
+  FRONTEND_APP:     acrazurebrainschat.azurecr.io/qrgen/frontend-app:latest
+  AZURE_RG_DEV:     rg-qrgen-dev
+  AZURE_RG_PROD:    rg-qrgen-prod
+  AZURE_LOCATION:   westeurope
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.event.inputs.environment || 'dev' }}
+    runs-on: ubuntu-latest
+    # Solo ejecutar si el workflow de build terminó correctamente (o si es manual)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Login Azure (OIDC — sin secretos de client secret) ────────────────
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Determinar entorno ─────────────────────────────────────────────────
+      - name: Configurar variables de entorno
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          if [[ "$ENV" == "prod" ]]; then
+            echo "rg=${{ env.AZURE_RG_PROD }}" >> $GITHUB_OUTPUT
+          else
+            echo "rg=${{ env.AZURE_RG_DEV }}" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Crear Resource Group si no existe ─────────────────────────────────
+      - name: Crear Resource Group
+        run: |
+          az group create \
+            --name     ${{ steps.env.outputs.rg }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --tags Environment=${{ steps.env.outputs.env }} Project=qr-accreditation ManagedBy=Bicep-IaC \
+            --output none
+          echo "✅ Resource Group: ${{ steps.env.outputs.rg }}"
+
+      # ── Instalar Bicep CLI ─────────────────────────────────────────────────
+      - name: Instalar Bicep
+        run: az bicep install
+
+      # ── Validar Bicep (what-if) ────────────────────────────────────────────
+      - name: Validar Bicep (what-if)
+        run: |
+          az deployment group what-if \
+            --resource-group  ${{ steps.env.outputs.rg }} \
+            --template-file   bicep/main.bicep \
+            --parameters      bicep/parameters/${{ steps.env.outputs.env }}.bicepparam \
+            --parameters      acrUsername='${{ secrets.ACR_USERNAME }}' \
+                              acrPassword='${{ secrets.ACR_PASSWORD }}' \
+                              openAiApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' \
+                              chainlitAuthSecret='${{ secrets.CHAINLIT_AUTH_SECRET }}' \
+                              backendImage='${{ env.BACKEND_APP }}' \
+                              frontendImage='${{ env.FRONTEND_APP }}'
+
+      # ── Desplegar infraestructura ──────────────────────────────────────────
+      - name: Deploy Bicep
+        id: deploy
+        run: |
+          OUTPUT=$(az deployment group create \
+            --resource-group  ${{ steps.env.outputs.rg }} \
+            --template-file   bicep/main.bicep \
+            --parameters      bicep/parameters/${{ steps.env.outputs.env }}.bicepparam \
+            --parameters      acrUsername='${{ secrets.ACR_USERNAME }}' \
+                              acrPassword='${{ secrets.ACR_PASSWORD }}' \
+                              openAiApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' \
+                              chainlitAuthSecret='${{ secrets.CHAINLIT_AUTH_SECRET }}' \
+                              backendImage='${{ env.BACKEND_APP }}' \
+                              frontendImage='${{ env.FRONTEND_APP }}' \
+            --query "properties.outputs" \
+            --output json)
+
+          FRONTEND_URL=$(echo "$OUTPUT" | jq -r '.frontendUrl.value')
+          BACKEND_URL=$(echo "$OUTPUT" | jq -r '.backendUrl.value')
+          echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+          echo "backend_url=$BACKEND_URL"   >> $GITHUB_OUTPUT
+          echo "✅ Frontend: $FRONTEND_URL"
+          echo "✅ Backend:  $BACKEND_URL"
+
+      # ── Health check ──────────────────────────────────────────────────────
+      - name: Health check backend
+        run: |
+          echo "⏳ Esperando arranque del backend (Container Apps escala desde 0)…"
+          for i in $(seq 1 20); do
+            STATUS=$(curl -m 10 -s -o /dev/null -w "%{http_code}" \
+              "${{ steps.deploy.outputs.backend_url }}/health" 2>/dev/null || echo "000")
+            echo "  [$i/20] $(date +%H:%M:%S) HTTP $STATUS"
+            if [[ "$STATUS" == "200" ]]; then
+              echo "✅ Backend online"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "❌ Timeout: backend no respondió en ~5 min"
+          exit 1
+
+      # ── Resumen ───────────────────────────────────────────────────────────
+      - name: Resumen deploy
+        if: always()
+        run: |
+          echo "## 🚀 Deploy QR Accreditation — ${{ steps.env.outputs.env }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Entorno        | \`${{ steps.env.outputs.env }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | \`${{ steps.env.outputs.rg }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend       | ${{ steps.deploy.outputs.frontend_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend App    | ${{ env.BACKEND_APP }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend App   | ${{ env.FRONTEND_APP }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit         | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Autor          | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

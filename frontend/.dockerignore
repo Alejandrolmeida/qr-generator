@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Entornos locales
+.env
+.env.local
+.venv
+__pycache__
+*.pyc
+*.pyo
+
+# Infra y docs
+*.md
+docs/
+bicep/
+.github/
+
+# Artefactos
+*.zip

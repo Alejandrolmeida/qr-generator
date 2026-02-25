@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Entornos locales
+.env
+.env.local
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Tests
+tests/
+test_*
+
+# Documentación e infra (no necesarios en la imagen)
+*.md
+docs/
+bicep/
+.github/
+
+# Artefactos
+*.zip
+output/
+input/
