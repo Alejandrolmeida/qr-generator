@@ -1,8 +1,10 @@
 """
 Configuración central del backend (pydantic-settings).
 Todos los valores se leen desde variables de entorno o fichero .env.
+Los campos marcados SecretStr nunca se imprimen en logs ni en repr().
 """
 from functools import lru_cache
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
 
     # ── Azure Storage ─────────────────────────────────────────────────────────
     # Usar Managed Identity en producción (dejar vacío) o connection string local
-    azure_storage_connection_string: str = ""
+    azure_storage_connection_string: SecretStr = SecretStr("")
     azure_storage_account_name: str = ""
     azure_storage_container_templates: str = "templates"
     azure_storage_container_excels: str = "excels"
@@ -31,8 +33,10 @@ class Settings(BaseSettings):
     sas_token_ttl_hours: int = 24
 
     # ── Azure OpenAI ──────────────────────────────────────────────────────────
+    # En producción NO se inyecta — la UAMI usa Cognitive Services OpenAI User para auth keyless.
+    # En local dev: establecer AZURE_OPENAI_API_KEY en .env para bypass.
     azure_openai_endpoint: str = ""
-    azure_openai_api_key: str = ""
+    azure_openai_api_key: SecretStr = SecretStr("")
     azure_openai_api_version: str = "2024-02-15-preview"
     azure_openai_deployment_gpt4o: str = "gpt-4o"
     # Umbral de confianza mínimo antes de pedir confirmación humana

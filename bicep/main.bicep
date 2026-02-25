@@ -3,11 +3,14 @@
 //
 // Gestión de secretos / identidad:
 //   - User-Assigned Managed Identity (UAMI) para todos los Container Apps
-//   - UAMI tiene: AcrPull*, Storage Blob Data Contributor, KV Secrets User
-//   - Key Vault almacena los 2 secretos de negocio; las CAs los leen en runtime
+//   - UAMI tiene: AcrPull*, Storage Blob Data Contributor, KV Secrets User,
+//                 Cognitive Services OpenAI User**
+//   - Key Vault almacena 1 secreto de negocio (Chainlit auth secret)
+//   - Azure OpenAI se accede SIN API key: la UAMI usa token de Entra ID
 //   - GitHub solo guarda las 3 credenciales OIDC (ningún secreto de negocio)
 //
-//   * AcrPull se asigna con setup-github-secrets.sh (ACR es un recurso externo)
+//   *  AcrPull se asigna vía deploy.yml (ACR es un recurso externo al RG)
+//   ** Cognitive Services OpenAI User se asigna vía deploy.yml (OAI externo)
 // =============================================================================
 
 targetScope = 'resourceGroup'

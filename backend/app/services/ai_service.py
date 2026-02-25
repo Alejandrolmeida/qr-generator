@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from openai import AzureOpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
 from app.core.config import get_settings
 from app.models.schemas import TemplatePositionResult
@@ -52,10 +53,28 @@ _analysis_cache: dict[str, TemplatePositionResult] = {}
 
 
 def _get_client() -> AzureOpenAI:
+    """Crea el cliente Azure OpenAI.
+
+    - Producción (Container Apps + UAMI): env var AZURE_OPENAI_API_KEY vacía
+      → autenticación keyless mediante DefaultAzureCredential.
+    - Desarrollo local (.env con AZURE_OPENAI_API_KEY definida)
+      → usa la API key directamente.
+    """
     s = get_settings()
+    api_key = s.azure_openai_api_key.get_secret_value()
+    if api_key:
+        return AzureOpenAI(
+            azure_endpoint=s.azure_openai_endpoint,
+            api_key=api_key,
+            api_version=s.azure_openai_api_version,
+        )
+    # Sin API key — la UAMI tiene el rol 'Cognitive Services OpenAI User'
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+    )
     return AzureOpenAI(
         azure_endpoint=s.azure_openai_endpoint,
-        api_key=s.azure_openai_api_key,
+        azure_ad_token_provider=token_provider,
         api_version=s.azure_openai_api_version,
     )
 

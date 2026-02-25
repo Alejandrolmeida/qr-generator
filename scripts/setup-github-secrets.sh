@@ -178,15 +178,11 @@ set_gh_secret "AZURE_CLIENT_ID"       "$CLIENT_ID"
 set_gh_secret "AZURE_TENANT_ID"       "$TENANT_ID"
 set_gh_secret "AZURE_SUBSCRIPTION_ID" "$SUBSCRIPTION_ID"
 
-# Secretos de negocio — se piden interactivamente
+# Secreto de negocio — Chainlit auth (el único necesario; OpenAI es keyless)
 echo ""
-echo "  Introduce los secretos de negocio (se guardan en GitHub Secrets"
-echo "  y se sincronizan a AKV en cada deploy):"
-echo ""
-read -rsp "  AZURE_OPENAI_API_KEY: " OAI_KEY; echo ""
-set_gh_secret "AZURE_OPENAI_API_KEY" "$OAI_KEY"
-
+echo "  Introduce el secreto de negocio Chainlit:"
 echo "  (deja en blanco para autogenerar CHAINLIT_AUTH_SECRET)"
+echo ""
 read -rsp "  CHAINLIT_AUTH_SECRET: " CL_SEC; echo ""
 if [ -z "$CL_SEC" ]; then
   CL_SEC=$(openssl rand -hex 32)
@@ -210,25 +206,39 @@ set_gh_var() {
 set_gh_var "AZURE_RG"  "$AZURE_RG"
 set_gh_var "ACR_NAME"  "$ACR_NAME"
 
+# OPENAI_RESOURCE_ID: resource ID completo del recurso Azure OpenAI
+# (no es sensible; el deploy.yml lo usa para asignar el rol a la UAMI)
+echo ""
+echo "  OPENAI_RESOURCE_ID: resource ID completo del Azure OpenAI"
+echo "  Ejemplo: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<name>"
+read -rp "  OPENAI_RESOURCE_ID: " OAI_RESOURCE_ID; echo ""
+if [ -n "$OAI_RESOURCE_ID" ]; then
+  set_gh_var "OPENAI_RESOURCE_ID" "$OAI_RESOURCE_ID"
+else
+  echo "  ⚠️  Omitido. Añade OPENAI_RESOURCE_ID en Settings → Variables de GitHub manualmente."
+fi
+
 # ── Resumen ───────────────────────────────────────────────────────────────────
 echo ""
 echo "════════════════════════════════════════════════════════════════"
 echo "✅ Setup completado"
 echo ""
-echo "  GitHub Secrets configurados:"
+echo "  GitHub Secrets configurados (solo OIDC — sin secretos de negocio):"
 echo "    AZURE_CLIENT_ID"
 echo "    AZURE_TENANT_ID"
 echo "    AZURE_SUBSCRIPTION_ID"
-echo "    AZURE_OPENAI_API_KEY"
 echo "    CHAINLIT_AUTH_SECRET"
 echo ""
 echo "  GitHub Variables configuradas:"
-echo "    AZURE_RG  = $AZURE_RG"
-echo "    ACR_NAME  = $ACR_NAME"
+echo "    AZURE_RG             = $AZURE_RG"
+echo "    ACR_NAME             = $ACR_NAME"
+echo "    OPENAI_RESOURCE_ID   = (ver arriba)"
+echo ""
+echo "  🔑 Autenticación keyless (0 API keys en producción):"
+echo "    • Azure OpenAI  → UAMI + Cognitive Services OpenAI User (asignado en deploy.yml)"
+echo "    • Azure Storage → UAMI + Storage Blob Data Contributor (asignado en Bicep)"
+echo "    • ACR Pull      → UAMI + AcrPull (asignado en deploy.yml)"
 echo ""
 echo "  Próximo paso: lanza el workflow 'Build & Push' para construir"
 echo "  las imágenes y luego 'Deploy' para desplegar la infraestructura."
-echo ""
-echo "  El workflow deploy.yml sincronizará automáticamente los secretos"
-echo "  de GitHub a AKV y las Container Apps los usarán vía UAMI."
 echo ""

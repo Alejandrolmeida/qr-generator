@@ -40,11 +40,32 @@ def _save_state(s: dict) -> None:
 
 
 def _oai_client() -> AsyncAzureOpenAI:
+    """Crea el cliente AsyncAzureOpenAI.
+
+    - Producción (Container Apps + UAMI): AZURE_OPENAI_API_KEY no está definida
+      → autenticación keyless mediante DefaultAzureCredential (Cognitive Services OpenAI User).
+    - Desarrollo local (.env con AZURE_OPENAI_API_KEY definida) → usa la API key.
+    """
     import os
+    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+
+    if api_key:
+        return AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
+            api_key=api_key,
+            api_version=api_version,
+        )
+    # Sin API key → UAMI con rol 'Cognitive Services OpenAI User'
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+    )
     return AsyncAzureOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        api_key=os.environ.get("AZURE_OPENAI_API_KEY", ""),
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+        azure_endpoint=endpoint,
+        azure_ad_token_provider=token_provider,
+        api_version=api_version,
     )
 
 

@@ -129,20 +129,15 @@ jobs:
             --scope "$KV_ID" \
             --output none 2>/dev/null || echo "ℹ️ Rol ya asignado"
 
-          # Sincronizar secretos desde GitHub Secrets → AKV
-          echo "📝 Sincronizando secretos a AKV..."
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "lanyards-openai-api-key" \
-            --value "${{ secrets.AZURE_OPENAI_API_KEY }}" \
-            --output none
+          # Sincronizar SOLO el secreto de Chainlit a AKV (OAI es keyless)
+          echo "📝 Sincronizando secreto Chainlit a AKV..."
           az keyvault secret set \
             --vault-name "$KV_NAME" \
             --name "lanyards-chainlit-auth-secret" \
             --value "${{ secrets.CHAINLIT_AUTH_SECRET }}" \
             --output none
 
-          echo "✅ Secretos sincronizados en AKV: $KV_NAME"
+          echo "✅ Secreto sincronizado en AKV: $KV_NAME"
 
       # ── 4. Instalar Bicep CLI ─────────────────────────────────────────────
       - name: Instalar Bicep
@@ -208,7 +203,21 @@ jobs:
 
           echo "✅ AcrPull asignado a UAMI sobre ACR"
 
-      # ── 8. Health check (espera cold start de Container Apps) ─────────────
+      # ── 8. Asignar Cognitive Services OpenAI User a la UAMI ───────────────────
+      #   Permite que backend y frontend accedan a Azure OpenAI SIN API key.
+      #   OPENAI_RESOURCE_ID es un GitHub Variable (no sensible).
+      - name: Asignar Cognitive Services OpenAI User a UAMI
+        run: |
+          az role assignment create \
+            --assignee-object-id "${{ steps.deploy.outputs.uami_principal_id }}" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Cognitive Services OpenAI User" \
+            --scope "${{ vars.OPENAI_RESOURCE_ID }}" \
+            --output none 2>/dev/null || echo "ℹ️ Cognitive Services OpenAI User ya asignado"
+
+          echo "✅ Cognitive Services OpenAI User asignado a UAMI"
+
+      # ── 9. Health check (espera cold start de Container Apps) ───────────────
       - name: Health check backend
         run: |
           echo "⏳ Esperando arranque del backend…"
@@ -242,9 +251,11 @@ jobs:
           echo "| Commit         | \`${{ github.sha }}\` |"                               >> $GITHUB_STEP_SUMMARY
           echo "| Autor          | ${{ github.actor }} |"                                 >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔐 Secretos" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret AKV | Fuente |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`lanyards-openai-api-key\` | GitHub Secret \`AZURE_OPENAI_API_KEY\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`lanyards-chainlit-auth-secret\` | GitHub Secret \`CHAINLIT_AUTH_SECRET\` |" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Secretos y autenticación" >> $GITHUB_STEP_SUMMARY
+          echo "| Servicio | Mecanismo |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Azure OpenAI   | Keyless — UAMI con \`Cognitive Services OpenAI User\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Azure Storage  | Keyless — UAMI con \`Storage Blob Data Contributor\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| ACR Pull       | Keyless — UAMI con \`AcrPull\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Chainlit Auth  | AKV \`lanyards-chainlit-auth-secret\` ← GitHub Secret |" >> $GITHUB_STEP_SUMMARY
 

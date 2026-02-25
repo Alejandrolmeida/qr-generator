@@ -29,8 +29,9 @@ def _get_blob_service_client() -> BlobServiceClient:
     En producción (Container Apps) usa Managed Identity.
     """
     s = get_settings()
-    if s.azure_storage_connection_string:
-        return BlobServiceClient.from_connection_string(s.azure_storage_connection_string)
+    conn_str = s.azure_storage_connection_string.get_secret_value()
+    if conn_str:
+        return BlobServiceClient.from_connection_string(conn_str)
     # Managed Identity (producción)
     credential = DefaultAzureCredential()
     account_url = f"https://{s.azure_storage_account_name}.blob.core.windows.net"
@@ -98,11 +99,12 @@ def generate_sas_url(
     client = _get_blob_service_client()
 
     # Con Managed Identity necesitamos obtener una user delegation key
-    if s.azure_storage_connection_string:
+    conn_str = s.azure_storage_connection_string.get_secret_value()
+    if conn_str:
         # Local / connection string: extraer account name y key
         parts = dict(
             p.split("=", 1)
-            for p in s.azure_storage_connection_string.split(";")
+            for p in conn_str.split(";")
             if "=" in p
         )
         account_name = parts.get("AccountName", "")

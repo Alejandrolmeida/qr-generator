@@ -3,9 +3,10 @@
 //
 // Seguridad:
 //   - UAMI (user-assigned managed identity) para pull ACR y lectura de AKV
-//   - Secretos referenciados via keyVaultUrl — nunca como valor literal
+//   - Azure OpenAI accedido SIN API key — UAMI tiene Cognitive Svcs OpenAI User
 //   - Storage accedido via Managed Identity (Storage Blob Data Contributor)
 //   - Sin credenciales ACR: el registro usa la identidad gestionada
+//   - AKV solo contiene: lanyards-chainlit-auth-secret
 // =============================================================================
 
 param prefix   string
@@ -87,14 +88,7 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
           identity: uamiId
         }
       ]
-      // Secretos referenciados desde AKV — nunca valores literales
-      secrets: [
-        {
-          name:        'openai-api-key'
-          keyVaultUrl: '${keyVaultUri}secrets/lanyards-openai-api-key'
-          identity:    uamiId
-        }
-      ]
+      // Sin secretos en el backend: OpenAI usa token MI, Storage usa MI
     }
     template: {
       containers: [
@@ -109,10 +103,9 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
             // Storage via Managed Identity — sin connection string
             { name: 'AZURE_STORAGE_ACCOUNT_NAME';    value:     storageAccountName }
             { name: 'AZURE_CLIENT_ID';               value:     uamiClientId }
-            // Azure OpenAI — endpoint no es secreto; API key viene de AKV
-            { name: 'AZURE_OPENAI_ENDPOINT';         value:     openAiEndpoint }
-            { name: 'AZURE_OPENAI_API_KEY';          secretRef: 'openai-api-key' }
-            { name: 'AZURE_OPENAI_DEPLOYMENT_GPT4O'; value:     openAiDeployment }
+            // Azure OpenAI — keyless via DefaultAzureCredential (UAMI)
+            { name: 'AZURE_OPENAI_ENDPOINT';         value: openAiEndpoint }
+            { name: 'AZURE_OPENAI_DEPLOYMENT_GPT4O'; value: openAiDeployment }
             { name: 'FONTS_FOLDER';                  value:     '/app/fonts' }
             { name: 'OUTPUT_FOLDER';                 value:     '/tmp/qr-output' }
           ]
@@ -166,12 +159,8 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
           identity: uamiId
         }
       ]
+      // Solo 1 secreto AKV: Chainlit auth (OpenAI ya es keyless via MI)
       secrets: [
-        {
-          name:        'openai-api-key'
-          keyVaultUrl: '${keyVaultUri}secrets/lanyards-openai-api-key'
-          identity:    uamiId
-        }
         {
           name:        'chainlit-auth-secret'
           keyVaultUrl: '${keyVaultUri}secrets/lanyards-chainlit-auth-secret'
@@ -190,10 +179,11 @@ resource frontend 'Microsoft.App/containerApps@2024-03-01' = {
           }
           env: [
             { name: 'BACKEND_URL';              value:     'https://${backend.properties.configuration.ingress.fqdn}' }
+            // Azure OpenAI — keyless via DefaultAzureCredential (UAMI)
             { name: 'AZURE_OPENAI_ENDPOINT';    value:     openAiEndpoint }
-            { name: 'AZURE_OPENAI_API_KEY';     secretRef: 'openai-api-key' }
             { name: 'AZURE_OPENAI_DEPLOYMENT';  value:     openAiDeployment }
             { name: 'AZURE_OPENAI_API_VERSION'; value:     '2024-02-15-preview' }
+            { name: 'AZURE_CLIENT_ID';          value:     uamiClientId }
             { name: 'CHAINLIT_AUTH_SECRET';     secretRef: 'chainlit-auth-secret' }
           ]
         }
