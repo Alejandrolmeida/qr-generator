@@ -8,8 +8,11 @@ name: Deploy — Lanyards AI Generator
 #    AZURE_SUBSCRIPTION_ID   → ID de la suscripción
 #
 #  GitHub Variables (Settings → Variables):
-#    AZURE_RG   → Resource Group, p.ej. rg-lanyards-aigen
-#    ACR_NAME   → Nombre corto del ACR, p.ej. acrazurebrainschat
+#    AZURE_RG       → Resource Group, p.ej. rg-lanyards-aigen
+#    ACR_NAME       → Nombre corto del ACR, p.ej. acrazurebrainschat
+#    ALLOWED_EMAILS → Emails autorizados para acceso OAuth (CSV, p.ej:
+#                     usuario@dominio.com,otro@dominio.com)
+#                     NUNCA hardcodear en bicepparam — siempre desde aquí.
 #
 #  Azure Key Vault (authoritative runtime store — poblado por setup-keyvault.sh):
 #    lanyards-openai-endpoint          ← endpoint Azure OpenAI
@@ -193,7 +196,8 @@ jobs:
             --parameters     bicep/parameters/${ENV}.bicepparam \
             --parameters \
               backendImage="${{ env.BACKEND_APP }}" \
-              frontendImage="${{ env.FRONTEND_APP }}"
+              frontendImage="${{ env.FRONTEND_APP }}" \
+              allowedEmails="${{ vars.ALLOWED_EMAILS }}"
 
       # ── 6. Desplegar infraestructura completa ─────────────────────────────
       #   main.bicep crea: UAMI, KV (idempotente), Storage, Container Apps.
@@ -209,6 +213,7 @@ jobs:
             --parameters \
               backendImage="${{ env.BACKEND_APP }}" \
               frontendImage="${{ env.FRONTEND_APP }}" \
+              allowedEmails="${{ vars.ALLOWED_EMAILS }}" \
             --query "properties.outputs" \
             --output json)
 

@@ -6,11 +6,8 @@ Genera 4 variantes de QR para verificar visualmente el resultado antes
 de integrar en producción. Los archivos se guardan en output/qr_test/.
 
 Uso:
-    # Desde la raíz del proyecto (sin entrar en backend/)
-    PYTHONPATH=backend python3 test_qr_styles.py
-
-    # O directamente si ya tienes qrcode + Pillow instalados globalmente:
-    python3 test_qr_styles.py
+    # Desde la raíz del proyecto
+    PYTHONPATH=backend python3 tests/test_qr_styles.py
 """
 
 from __future__ import annotations
@@ -19,8 +16,8 @@ import sys
 import os
 from pathlib import Path
 
-# Asegurar que el módulo backend sea importable
-sys.path.insert(0, str(Path(__file__).parent / "backend"))
+# Asegurar que el módulo backend sea importable (tests/ está un nivel por debajo de la raíz)
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from app.services.qr_service import generate_styled_qr  # noqa: E402
 

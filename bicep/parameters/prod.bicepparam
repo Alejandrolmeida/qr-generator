@@ -11,7 +11,7 @@ param keyVaultLocation = 'spaincentral'
 param tags = {
   Environment: 'Production'
   CostCenter: 'Operations'
-  Owner: 'alejandro@azurebrains.com'
+  Owner: 'platform-team'
   Project: 'lanyards-ai-generator'
   ManagedBy: 'Bicep-IaC'
   Criticality: 'Medium'
@@ -31,6 +31,8 @@ param openAiDeployment = 'gpt-4o'
 // Las Container Apps los leen en runtime vía Managed Identity (UAMI).
 // GitHub solo almacena AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID.
 
-// OAuth Entra ID — solo el email del propietario puede acceder
+// OAuth Entra ID — lista de emails con acceso permitido.
+// NUNCA hardcodear aquí: el pipeline inyecta el valor desde la
+// GitHub Variable ALLOWED_EMAILS (Settings → Variables → Repository).
 param chainlitUrl   = 'https://lanyard.azurebrains.com'
-param allowedEmails = 'alejandro.almeida.garcia@gmail.com'
+param allowedEmails = ''   // sobreescrito por deploy.yml via --parameters
