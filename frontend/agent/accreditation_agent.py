@@ -142,6 +142,22 @@ async def on_file_upload(files: list[cl.File], message_text: str) -> None:
 async def on_message(message: cl.Message) -> None:
     state = _state()
 
+    # Guard: si la sesión se perdió tras reinicio del servidor, reinicializar
+    if state is None:
+        state = _init_state()
+        _save_state(state)
+        # Reenviar saludo para que el usuario sepa que la sesión se reinició
+        await cl.Message(
+            content=(
+                "_(La sesión expiró tras un reinicio del servidor — empezamos de nuevo)_\n\n"
+                "¡Hola! Soy tu asistente para generar acreditaciones de evento con QR 🎫\n\n"
+                "**Primera pregunta:** ¿utilizas plantillas distintas para diferentes tipos de entrada "
+                "(por ejemplo, una plantilla para asistentes generales, otra para ponentes y otra para staff), "
+                "o tienes una única plantilla para todos?"
+            )
+        ).send()
+        return
+
     # Ficheros adjuntos en el mensaje
     if message.elements:
         files = [e for e in message.elements if hasattr(e, "content")]
@@ -331,25 +347,44 @@ async def _start_generation(state: dict) -> None:
 async def _chat_with_agent(user_text: str, state: dict) -> None:
     import os
 
-    client = _oai_client()
+    try:
+        client = _oai_client()
+    except Exception as e:
+        await cl.Message(content=f"❌ Error al conectar con Azure OpenAI: `{e}`").send()
+        print(f"[ERROR] _oai_client() failed: {e}")
+        return
+
     history: list[dict] = state.get("history", [])
     history.append({"role": "user", "content": user_text})
 
-    response = await client.chat.completions.create(
-        model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}] + history,
-        temperature=0.3,
-        max_tokens=800,
-        stream=True,
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}] + history,
+            temperature=0.3,
+            max_tokens=800,
+            stream=True,
+        )
+    except Exception as e:
+        await cl.Message(content=f"❌ Error al llamar a Azure OpenAI: `{e}`").send()
+        print(f"[ERROR] chat.completions.create failed: {e}")
+        history.pop()  # Revertir el mensaje del usuario
+        return
 
     msg = cl.Message(content="")
-    async with msg:
-        full = ""
-        async for chunk in response:
-            delta = chunk.choices[0].delta.content or "" if chunk.choices else ""
-            await msg.stream_token(delta)
-            full += delta
+    full = ""
+    try:
+        async with msg:
+            async for chunk in response:
+                delta = chunk.choices[0].delta.content or "" if chunk.choices else ""
+                await msg.stream_token(delta)
+                full += delta
+    except Exception as e:
+        print(f"[ERROR] streaming failed: {e}")
+        if not full:
+            await cl.Message(content=f"❌ Error durante el streaming de respuesta: `{e}`").send()
+            history.pop()
+            return
 
     history.append({"role": "assistant", "content": full})
     state["history"] = history[-20:]  # ventana de 20 turnos
